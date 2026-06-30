@@ -50,34 +50,65 @@ class JobState:
 STATE = JobState()
 LOCK = threading.Lock()
 FLASH_MESSAGE = ""
+JOB_PROCESS: subprocess.Popen[str] | None = None
 
 
 def _run_command(command: list[str]) -> None:
+    global JOB_PROCESS
+    proc = subprocess.Popen(
+        command,
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     with LOCK:
         STATE.status = "running"
-        STATE.title = command[2] if len(command) > 2 else "job"
+        STATE.title = Path(command[1]).stem if len(command) > 1 else "job"
         STATE.command = command
         STATE.started = time.time()
         STATE.finished = None
         STATE.returncode = None
         STATE.output = ""
         STATE.error = ""
-    proc = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+        JOB_PROCESS = proc
+    stdout, stderr = proc.communicate()
     with LOCK:
         STATE.finished = time.time()
         STATE.returncode = proc.returncode
-        STATE.output = proc.stdout
-        STATE.error = proc.stderr
+        STATE.output = stdout or ""
+        STATE.error = stderr or ""
         STATE.status = "done" if proc.returncode == 0 else "failed"
+        JOB_PROCESS = None
 
 
 def start_job(command: list[str], title: str) -> None:
     with LOCK:
         if STATE.status == "running":
-            raise RuntimeError("A job is already running.")
+            raise RuntimeError("A job is already running. Wait for it to finish or stop it first.")
         STATE.title = title
     thread = threading.Thread(target=_run_command, args=(command,), daemon=True)
     thread.start()
+
+
+def stop_job() -> None:
+    global JOB_PROCESS
+    with LOCK:
+        proc = JOB_PROCESS
+        if proc is None:
+            return
+        JOB_PROCESS = None
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    with LOCK:
+        STATE.status = "stopped"
+        STATE.finished = time.time()
 
 
 def _latest_output_dirs() -> list[Path]:
@@ -215,6 +246,10 @@ def _render_page(message: str = "") -> str:
       gap: 8px;
       font-size: 0.95rem;
     }}
+    .status-grid {{
+      display: grid;
+      gap: 10px;
+    }}
     .pill {{
       display: inline-flex;
       align-items: center;
@@ -313,6 +348,13 @@ def _render_page(message: str = "") -> str:
       <div class="panel status">
         <h2>Job Status</h2>
         <pre>{esc(jobs_block)}</pre>
+        <div class="status-grid">
+          <button onclick="location.reload()" type="button">Refresh Status</button>
+          <form method="post" action="/action" style="margin:0">
+            <input type="hidden" name="action" value="stop_job" />
+            <button type="submit" class="secondary">Stop Running Job</button>
+          </form>
+        </div>
         <div><strong>Registry characters:</strong> {len(registry)}</div>
         <div><strong>Voice entries:</strong> {len(voice_registry)}</div>
       </div>
@@ -514,6 +556,9 @@ class Handler(BaseHTTPRequestHandler):
                 ]
                 start_job(command, f"import: {character_id}")
                 message = f"Started import for {character_id}."
+            elif action == "stop_job":
+                stop_job()
+                message = "Stopped current job."
             else:
                 raise ValueError(f"Unknown action: {action}")
         except Exception as exc:
