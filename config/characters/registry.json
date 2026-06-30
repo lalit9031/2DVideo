@@ -33,5 +33,13 @@
     "voice_id": "char_05_owl",
     "character_json": "config/characters/char_05_owl.json",
     "created": "2026-07-01T02:44:37"
+  },
+  "char_01_girl": {
+    "tier": "cast",
+    "name": "Maya",
+    "voice_id": "char_01_girl",
+    "character_json": "config/characters/char_01_girl.json",
+    "created": "2026-07-01T02:57:38",
+    "source": "Gemini_Generated_Image_i0ao1ai0ao1ai0ao.png"
   }
 }

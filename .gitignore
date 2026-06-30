@@ -8,5 +8,5 @@ build/
 dist/
 output/
 logs/
+Char/
 *.egg-info/
-

@@ -27,6 +27,19 @@ def _load_part(character_id: str, part: str) -> Image.Image:
     return Image.open(character_assets_dir(character_id) / f"{part}.png").convert("RGBA")
 
 
+def _load_character(character_id: str) -> dict:
+    registry = load_registry()
+    entry = registry.get(character_id)
+    if not entry:
+        raise KeyError(f"Unknown character id: {character_id}")
+    path = Path(entry["character_json"])
+    if not path.is_absolute():
+        from pipeline.common import ROOT
+
+        path = ROOT / path
+    return read_json(path)
+
+
 def _background(size: tuple[int, int], background: str, time_factor: float) -> Image.Image:
     width, height = size
     img = Image.new("RGBA", size, (0, 0, 0, 255))
@@ -78,14 +91,21 @@ def _compose_character(
     mouth_state: str,
     action: str,
 ) -> None:
+    character = _load_character(character_id)
     body = _load_part(character_id, "body").resize((int(280 * scale), int(360 * scale)))
-    head = _load_part(character_id, "head").resize((int(256 * scale), int(256 * scale)))
-    eyes = _load_part(character_id, _eye_state(time_sec)).resize((int(256 * scale), int(256 * scale)))
-    mouth = _load_part(character_id, mouth_state).resize((int(256 * scale), int(256 * scale)))
     arm_l = _load_part(character_id, "arm_l").resize((int(120 * scale), int(240 * scale)))
     arm_r = _load_part(character_id, "arm_r").resize((int(120 * scale), int(240 * scale)))
     leg_l = _load_part(character_id, "leg_l").resize((int(120 * scale), int(220 * scale)))
     leg_r = _load_part(character_id, "leg_r").resize((int(120 * scale), int(220 * scale)))
+    if character.get("render_mode") == "face_variants":
+        variant_map = character.get("face_variants", {})
+        face_key = variant_map.get(mouth_state, variant_map.get("head", "face_neutral"))
+        head = _load_part(character_id, face_key).resize((int(256 * scale), int(256 * scale)))
+        eyes = mouth = None
+    else:
+        head = _load_part(character_id, "head").resize((int(256 * scale), int(256 * scale)))
+        eyes = _load_part(character_id, _eye_state(time_sec)).resize((int(256 * scale), int(256 * scale)))
+        mouth = _load_part(character_id, mouth_state).resize((int(256 * scale), int(256 * scale)))
     bob = int(math.sin(time_sec * 4.0) * 8 * scale)
     if action == "jump":
         bob += int(abs(math.sin(time_sec * 5.5)) * 20 * scale)
@@ -105,8 +125,10 @@ def _compose_character(
     base.alpha_composite(arm_l.rotate(-20 + arm_offset * 0.3, resample=Image.Resampling.BICUBIC, expand=True), (x - 150, anchor_y - 10))
     base.alpha_composite(arm_r.rotate(20 - arm_offset * 0.3, resample=Image.Resampling.BICUBIC, expand=True), (x + 30, anchor_y - 10))
     base.alpha_composite(head, (x - head.width // 2, anchor_y - 240))
-    base.alpha_composite(eyes, (x - eyes.width // 2, anchor_y - 240))
-    base.alpha_composite(mouth, (x - mouth.width // 2, anchor_y - 240))
+    if eyes is not None:
+        base.alpha_composite(eyes, (x - eyes.width // 2, anchor_y - 240))
+    if mouth is not None:
+        base.alpha_composite(mouth, (x - mouth.width // 2, anchor_y - 240))
 
 
 def render_shot(
@@ -190,4 +212,3 @@ def render_broll(
 
     export_video(frames, output_path, fps)
     return ShotRenderResult(shot_id=shot["shot_id"], video_path=output_path, frame_count=frame_count, fps=fps)
-

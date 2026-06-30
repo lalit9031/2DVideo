@@ -1,0 +1,51 @@
+{
+  "character_id": "char_01_girl",
+  "name": "Maya",
+  "voice_id": "char_01_girl",
+  "rig_parts": [
+    "face_neutral",
+    "face_blink",
+    "face_smile",
+    "face_surprised",
+    "face_wide",
+    "body",
+    "arm_l",
+    "arm_r",
+    "leg_l",
+    "leg_r",
+    "shoe_l",
+    "shoe_r"
+  ],
+  "anim_cycles": [
+    "idle",
+    "bounce_wave",
+    "walk",
+    "point",
+    "jump",
+    "sleep"
+  ],
+  "pivot_points": {
+    "head": [
+      0,
+      -120
+    ],
+    "arm_l": [
+      -60,
+      -20
+    ],
+    "arm_r": [
+      60,
+      -20
+    ]
+  },
+  "asset_dir": "config/characters/char_01_girl",
+  "render_mode": "face_variants",
+  "face_variants": {
+    "eyes_open": "face_neutral",
+    "eyes_blink": "face_blink",
+    "mouth_closed": "face_smile",
+    "mouth_open": "face_surprised",
+    "mouth_wide": "face_wide",
+    "head": "face_neutral"
+  }
+}

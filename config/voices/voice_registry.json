@@ -28,5 +28,11 @@
     "language": "en",
     "pitch_shift": 0,
     "speed": 1.0
+  },
+  "char_01_girl": {
+    "reference_clip": "config/voices/char_01_girl_ref.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.0
   }
 }

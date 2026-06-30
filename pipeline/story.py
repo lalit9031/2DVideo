@@ -42,7 +42,7 @@ def build_episode(
     if not registry:
         bootstrap_demo_cast()
         registry = load_registry()
-    available = list(registry.keys())
+    available = _preferred_character_order(registry)
     kind = kind or template.get("type", "poem")
     target_duration = int(template.get("target_duration_sec", 150 if kind == "poem" else 300))
     episode_id = episode_id or f"{today_iso()}-{kind}-01"
@@ -106,6 +106,14 @@ def build_episode(
     return episode
 
 
+def _preferred_character_order(registry: dict) -> list[str]:
+    imported = [cid for cid, entry in registry.items() if entry.get("source") or entry.get("render_mode")]
+    cast = [cid for cid, entry in registry.items() if entry.get("tier") == "cast" and cid not in imported]
+    guests = [cid for cid, entry in registry.items() if entry.get("tier") != "cast"]
+    ordered = imported + cast + guests
+    return ordered or list(registry.keys())
+
+
 def _poem_lines() -> list[str]:
     return [
         "Hop along and sing with me, bright as bright can be!",
@@ -151,4 +159,3 @@ def _broll_prompt(index: int) -> str:
         "sparkling stars drifting over a calm pastel sky",
     ]
     return prompts[index % len(prompts)]
-
