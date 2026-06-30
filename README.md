@@ -40,6 +40,22 @@ Then open `http://127.0.0.1:8000` to:
 - run individual stages
 - import a character sheet
 - inspect registries and generated outputs
+- review finished episodes
+
+### Review finished output
+
+After a run completes, open the review page from the home screen or go directly to:
+
+```text
+http://127.0.0.1:8000/review
+```
+
+The review page shows:
+
+- the final MP4
+- assembled audio
+- episode and stage JSON files
+- the shot list and manifest summary
 
 ## Notes
 

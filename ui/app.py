@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import mimetypes
 import threading
 import time
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,7 @@ CHAR_DIR = ROOT / "config" / "characters"
 VOICE_DIR = ROOT / "config" / "voices"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
+MEDIA_SUFFIXES = {".mp4", ".wav", ".json", ".txt", ".log"}
 
 
 @dataclass
@@ -156,6 +158,23 @@ def _latest_output_dirs() -> list[Path]:
     return candidates[:8]
 
 
+def _latest_episode_dir() -> Path | None:
+    dirs = _latest_output_dirs()
+    return dirs[0] if dirs else None
+
+
+def _safe_path(raw: str) -> Path:
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = (ROOT / raw).resolve()
+    else:
+        candidate = candidate.resolve()
+    root = ROOT.resolve()
+    if root not in candidate.parents and candidate != root:
+        raise ValueError("Invalid path")
+    return candidate
+
+
 def _read_text(path: Path, limit: int = 5000) -> str:
     try:
         text = path.read_text(encoding="utf-8")
@@ -171,6 +190,21 @@ def _read_json(path: Path) -> Any | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def _episode_artifacts(episode_dir: Path) -> list[tuple[str, Path]]:
+    candidates = [
+        ("episode.json", episode_dir / "episode.json"),
+        ("validated", episode_dir / "episode.validated.json"),
+        ("tts", episode_dir / "episode.tts.json"),
+        ("rendered", episode_dir / "episode.rendered.json"),
+        ("broll", episode_dir / "episode.broll.json"),
+        ("assembled manifest", episode_dir / "assembled.manifest.json"),
+        ("final video", episode_dir / "final.mp4"),
+        ("assembled video", episode_dir / "assembled.mp4"),
+        ("audio", episode_dir / "assembled.wav"),
+    ]
+    return [(label, path) for label, path in candidates if path.exists()]
 
 
 def _job_summary(progress: dict[str, Any] | None = None) -> str:
@@ -196,6 +230,128 @@ def _job_summary(progress: dict[str, Any] | None = None) -> str:
     return "\n".join(lines)
 
 
+def _render_review_page(episode_dir: Path) -> str:
+    episode_json = _read_json(episode_dir / "episode.json") or {}
+    summary = _read_json(episode_dir / "assembled.manifest.json") or {}
+    final_mp4 = episode_dir / "final.mp4"
+    assembled_mp4 = episode_dir / "assembled.mp4"
+    assembled_wav = episode_dir / "assembled.wav"
+    tts_json = episode_dir / "episode.tts.json"
+    rendered_json = episode_dir / "episode.rendered.json"
+    broll_json = episode_dir / "episode.broll.json"
+    artifacts = _episode_artifacts(episode_dir)
+
+    def link(label: str, path: Path) -> str:
+        rel = path.relative_to(ROOT)
+        return f'<a href="/file?path={quote(str(rel))}" target="_blank" rel="noopener">{html.escape(label)}</a>'
+
+    shots = episode_json.get("shots", [])
+    shot_rows = []
+    for shot in shots:
+        shot_rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(shot.get('shot_id', '')))}</td>"
+            f"<td>{html.escape(str(shot.get('duration_sec', '')))}</td>"
+            f"<td>{html.escape(', '.join(shot.get('characters', [])) or 'broll')}</td>"
+            f"<td>{html.escape(str(shot.get('action', 'broll' if shot.get('broll') else '')))}</td>"
+            "</tr>"
+        )
+
+    summary_json = json.dumps(summary, indent=2, ensure_ascii=True)
+    episode_id = episode_json.get("episode_id", episode_dir.name)
+    title = episode_json.get("title", episode_id)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Review {html.escape(str(episode_id))}</title>
+  <style>
+    body {{
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: linear-gradient(135deg, #eef7f5, #f8efe0);
+      color: #1e293b;
+    }}
+    .wrap {{ max-width: 1200px; margin: 0 auto; padding: 24px; }}
+    .panel {{
+      background: rgba(255,255,255,.84);
+      border: 1px solid rgba(30,41,59,.12);
+      border-radius: 20px;
+      box-shadow: 0 16px 36px rgba(15,23,42,.12);
+      padding: 20px;
+      margin-bottom: 16px;
+    }}
+    .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    .wide {{ grid-column: 1 / -1; }}
+    .links {{ display: flex; flex-wrap: wrap; gap: 10px; }}
+    .links a {{
+      display: inline-block;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: #0f766e;
+      color: white;
+      text-decoration: none;
+      font-weight: 700;
+    }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    th, td {{ padding: 8px; border-bottom: 1px solid rgba(30,41,59,.12); text-align: left; }}
+    video {{ width: 100%; max-height: 520px; border-radius: 16px; background: #000; }}
+    pre {{ white-space: pre-wrap; word-break: break-word; background: rgba(15,23,42,.05); padding: 14px; border-radius: 16px; overflow-x: auto; }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>Review: {html.escape(str(title))}</h1>
+      <p><strong>Episode:</strong> {html.escape(str(episode_id))}</p>
+      <p><strong>Folder:</strong> {html.escape(str(episode_dir.relative_to(ROOT)))}</p>
+      <div class="links">
+        <a href="/">Back to UI</a>
+        {link("Final MP4", final_mp4) if final_mp4.exists() else ""}
+        {link("Assembled MP4", assembled_mp4) if assembled_mp4.exists() else ""}
+        {link("Assembled WAV", assembled_wav) if assembled_wav.exists() else ""}
+        {link("Episode JSON", episode_dir / "episode.json") if (episode_dir / "episode.json").exists() else ""}
+        {link("TTS JSON", tts_json) if tts_json.exists() else ""}
+        {link("Render JSON", rendered_json) if rendered_json.exists() else ""}
+        {link("B-roll JSON", broll_json) if broll_json.exists() else ""}
+        {link("Manifest", episode_dir / "assembled.manifest.json") if (episode_dir / "assembled.manifest.json").exists() else ""}
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel wide">
+        <h2>Preview Video</h2>
+        {f'<video controls src="/file?path={quote(str(final_mp4.relative_to(ROOT)))}"></video>' if final_mp4.exists() else '<p>No final video available.</p>'}
+      </div>
+      <div class="panel">
+        <h2>Episode Summary</h2>
+        <pre>{html.escape(json.dumps(episode_json, indent=2, ensure_ascii=True)[:8000])}</pre>
+      </div>
+      <div class="panel">
+        <h2>Shot List</h2>
+        <table>
+          <thead><tr><th>Shot</th><th>Duration</th><th>Characters</th><th>Action</th></tr></thead>
+          <tbody>
+            {''.join(shot_rows) if shot_rows else '<tr><td colspan="4">No shots found.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      <div class="panel wide">
+        <h2>Assembly Manifest</h2>
+        <pre>{html.escape(summary_json[:8000])}</pre>
+      </div>
+      <div class="panel wide">
+        <h2>Available Artifacts</h2>
+        <ul>
+          {''.join(f'<li>{html.escape(label)} - <a href="/file?path={quote(str(path.relative_to(ROOT)))}" target="_blank" rel="noopener">{html.escape(path.name)}</a></li>' for label, path in artifacts)}
+        </ul>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
 def _read_progress() -> dict[str, Any]:
     try:
         return json.loads(UI_PROGRESS_FILE.read_text(encoding="utf-8"))
@@ -209,6 +365,7 @@ def _render_page(message: str = "") -> str:
     registry = _read_json(CHAR_DIR / "registry.json") or {}
     voice_registry = _read_json(VOICE_DIR / "voice_registry.json") or {}
     latest_dirs = _latest_output_dirs()
+    latest_episode = _latest_episode_dir()
     latest_summary = None
     if latest_dirs:
         summary_path = latest_dirs[0] / "daily_summary.json"
@@ -227,11 +384,13 @@ def _render_page(message: str = "") -> str:
     latest_cards = []
     for folder in latest_dirs:
         files = sorted([p.name for p in folder.glob("*") if p.is_file()])
+        review_link = f'<a href="/review?episode={quote(str(folder.relative_to(ROOT)))}" target="_blank" rel="noopener">Review</a>'
         latest_cards.append(
             f"""
             <div class="card">
               <h3>{esc(folder.name)}</h3>
               <p><strong>Files:</strong> {esc(', '.join(files[:12]))}</p>
+              <p>{review_link}</p>
             </div>
             """
         )
@@ -505,6 +664,7 @@ def _render_page(message: str = "") -> str:
 
       <div class="panel form-card">
         <h2>Latest Outputs</h2>
+        <p><a href="/review">Open latest review page</a></p>
         <div class="cards">
           {''.join(latest_cards) if latest_cards else '<p class="muted">No output folders yet.</p>'}
         </div>
@@ -539,24 +699,86 @@ def _render_page(message: str = "") -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def do_HEAD(self) -> None:  # noqa: N802
-        parsed = urlparse(self.path)
-        if parsed.path != "/":
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        page = _render_page()
-        data = page.encode("utf-8")
+    def _serve_file(self, path: Path) -> None:
+        suffix = path.suffix.lower()
+        mime = mimetypes.types_map.get(suffix, "application/octet-stream")
+        data = path.read_bytes()
         self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
+        self.wfile.write(data)
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if parsed.path == "/":
+            page = _render_page()
+            data = page.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return
+        if parsed.path == "/review":
+            episode = parse_qs(parsed.query).get("episode", [""])[0]
+            episode_dir = _safe_path(episode) if episode else (_latest_episode_dir() or OUTPUT_DIR)
+            page = _render_review_page(episode_dir)
+            data = page.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return
+        if parsed.path == "/file":
+            file_path = parse_qs(parsed.query).get("path", [""])[0]
+            if not file_path:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            path = _safe_path(file_path)
+            if not path.exists():
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", mimetypes.types_map.get(path.suffix.lower(), "application/octet-stream"))
+            self.send_header("Content-Length", str(path.stat().st_size))
+            self.end_headers()
+            return
+        self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_GET(self) -> None:  # noqa: N802
-        parsed = urlparse(self.path)
-        if parsed.path != "/":
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
         global FLASH_MESSAGE
+        parsed = urlparse(self.path)
+        if parsed.path == "/":
+            page = _render_page(message=FLASH_MESSAGE if FLASH_MESSAGE else "")
+            data = page.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if parsed.path == "/review":
+            episode = parse_qs(parsed.query).get("episode", [""])[0]
+            episode_dir = _safe_path(episode) if episode else (_latest_episode_dir() or OUTPUT_DIR)
+            page = _render_review_page(episode_dir)
+            data = page.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if parsed.path == "/file":
+            file_path = parse_qs(parsed.query).get("path", [""])[0]
+            if not file_path:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            path = _safe_path(file_path)
+            if not path.exists() or not path.is_file():
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            self._serve_file(path)
+            return
         message = FLASH_MESSAGE
         FLASH_MESSAGE = ""
         page = _render_page(message=message)
