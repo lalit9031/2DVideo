@@ -12,17 +12,34 @@ This repository is being scaffolded from the build spec. The initial work focuse
 - config registry files
 - pipeline stage entry points
 - orchestration layout
+- local browser UI for testing pipeline runs
 
 ## Layout
 
 ```text
 config/
 pipeline/
+ui/
 schemas/
 assets/
 output/
 logs/
 ```
+
+## UI
+
+Start the local test UI with:
+
+```bash
+python3 -m ui.app --host 127.0.0.1 --port 8000
+```
+
+Then open `http://127.0.0.1:8000` to:
+
+- run the orchestrator
+- run individual stages
+- import a character sheet
+- inspect registries and generated outputs
 
 ## Notes
 

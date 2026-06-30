@@ -1,0 +1,549 @@
+from __future__ import annotations
+
+import html
+import json
+import subprocess
+import sys
+import threading
+import time
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_DIR = ROOT / "output"
+CONFIG_DIR = ROOT / "config"
+CHAR_DIR = ROOT / "config" / "characters"
+VOICE_DIR = ROOT / "config" / "voices"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8000
+
+
+@dataclass
+class JobState:
+    status: str = "idle"
+    title: str = "No job running"
+    command: list[str] = field(default_factory=list)
+    started: float | None = None
+    finished: float | None = None
+    returncode: int | None = None
+    output: str = ""
+    error: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "title": self.title,
+            "command": self.command,
+            "started": self.started,
+            "finished": self.finished,
+            "returncode": self.returncode,
+            "output": self.output,
+            "error": self.error,
+        }
+
+
+STATE = JobState()
+LOCK = threading.Lock()
+FLASH_MESSAGE = ""
+
+
+def _run_command(command: list[str]) -> None:
+    with LOCK:
+        STATE.status = "running"
+        STATE.title = command[2] if len(command) > 2 else "job"
+        STATE.command = command
+        STATE.started = time.time()
+        STATE.finished = None
+        STATE.returncode = None
+        STATE.output = ""
+        STATE.error = ""
+    proc = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+    with LOCK:
+        STATE.finished = time.time()
+        STATE.returncode = proc.returncode
+        STATE.output = proc.stdout
+        STATE.error = proc.stderr
+        STATE.status = "done" if proc.returncode == 0 else "failed"
+
+
+def start_job(command: list[str], title: str) -> None:
+    with LOCK:
+        if STATE.status == "running":
+            raise RuntimeError("A job is already running.")
+        STATE.title = title
+    thread = threading.Thread(target=_run_command, args=(command,), daemon=True)
+    thread.start()
+
+
+def _latest_output_dirs() -> list[Path]:
+    if not OUTPUT_DIR.exists():
+        return []
+    candidates = [p for p in OUTPUT_DIR.iterdir() if p.is_dir() and p.name != "final"]
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[:8]
+
+
+def _read_text(path: Path, limit: int = 5000) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception as exc:  # pragma: no cover - display helper
+        return f"<unable to read {path}: {exc}>"
+    if len(text) > limit:
+        return text[:limit] + "\n... truncated ..."
+    return text
+
+
+def _read_json(path: Path) -> Any | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _job_summary() -> str:
+    with LOCK:
+        state = STATE.as_dict()
+    started = f"{time.ctime(state['started'])}" if state["started"] else "n/a"
+    finished = f"{time.ctime(state['finished'])}" if state["finished"] else "n/a"
+    lines = [
+        f"Status: {state['status']}",
+        f"Title: {state['title']}",
+        f"Command: {' '.join(state['command']) if state['command'] else 'n/a'}",
+        f"Started: {started}",
+        f"Finished: {finished}",
+        f"Return code: {state['returncode']}",
+    ]
+    return "\n".join(lines)
+
+
+def _render_page(message: str = "") -> str:
+    with LOCK:
+        state = STATE.as_dict()
+    registry = _read_json(CHAR_DIR / "registry.json") or {}
+    voice_registry = _read_json(VOICE_DIR / "voice_registry.json") or {}
+    latest_dirs = _latest_output_dirs()
+    latest_summary = None
+    if latest_dirs:
+        summary_path = latest_dirs[0] / "daily_summary.json"
+        if summary_path.exists():
+            latest_summary = _read_text(summary_path, 10000)
+    jobs_block = _job_summary()
+
+    def esc(value: Any) -> str:
+        return html.escape("" if value is None else str(value))
+
+    latest_cards = []
+    for folder in latest_dirs:
+        files = sorted([p.name for p in folder.glob("*") if p.is_file()])
+        latest_cards.append(
+            f"""
+            <div class="card">
+              <h3>{esc(folder.name)}</h3>
+              <p><strong>Files:</strong> {esc(', '.join(files[:12]))}</p>
+            </div>
+            """
+        )
+    registry_rows = []
+    for key, item in registry.items():
+        registry_rows.append(
+            f"<tr><td>{esc(key)}</td><td>{esc(item.get('name'))}</td><td>{esc(item.get('tier'))}</td><td>{esc(item.get('voice_id'))}</td></tr>"
+        )
+    voice_rows = []
+    for key, item in voice_registry.items():
+        voice_rows.append(
+            f"<tr><td>{esc(key)}</td><td>{esc(item.get('reference_clip'))}</td><td>{esc(item.get('language'))}</td></tr>"
+        )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2DVideo Local UI</title>
+  <style>
+    :root {{
+      --bg: #eef7f5;
+      --bg2: #f8efe0;
+      --ink: #1e293b;
+      --muted: #5b6472;
+      --card: rgba(255,255,255,0.82);
+      --accent: #0f766e;
+      --accent2: #c2410c;
+      --line: rgba(30,41,59,.12);
+      --shadow: 0 18px 48px rgba(15,23,42,.12);
+      --radius: 22px;
+    }}
+    body {{
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15,118,110,.14), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(194,65,12,.14), transparent 28%),
+        linear-gradient(135deg, var(--bg), var(--bg2));
+      min-height: 100vh;
+    }}
+    .wrap {{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }}
+    .hero {{
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1.4fr .9fr;
+      align-items: stretch;
+      margin-bottom: 18px;
+    }}
+    .panel {{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }}
+    .hero .panel, .card, .form-card {{ padding: 20px; }}
+    h1 {{ margin: 0; font-size: 2.3rem; line-height: 1; }}
+    h2 {{ margin: 0 0 12px; font-size: 1.1rem; }}
+    p {{ color: var(--muted); line-height: 1.55; }}
+    .status {{
+      display: grid;
+      gap: 8px;
+      font-size: 0.95rem;
+    }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(15,118,110,.1);
+      color: var(--accent);
+      font-weight: 700;
+      width: fit-content;
+    }}
+    .grid {{
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 16px;
+    }}
+    .wide {{ grid-column: 1 / -1; }}
+    .forms {{
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+    .form-card form {{
+      display: grid;
+      gap: 10px;
+    }}
+    label {{
+      display: grid;
+      gap: 6px;
+      font-size: 0.92rem;
+      font-weight: 700;
+    }}
+    input, select, textarea {{
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 11px 12px;
+      font: inherit;
+      background: rgba(255,255,255,.92);
+      color: var(--ink);
+    }}
+    textarea {{ min-height: 130px; }}
+    button {{
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      color: white;
+      background: linear-gradient(135deg, var(--accent), #115e59);
+      box-shadow: 0 12px 26px rgba(15,118,110,.18);
+    }}
+    .secondary {{ background: linear-gradient(135deg, var(--accent2), #9a3412); }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }}
+    th, td {{
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }}
+    pre {{
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(15,23,42,.05);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      margin: 0;
+      overflow-x: auto;
+    }}
+    .cards {{
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+    .muted {{ color: var(--muted); }}
+    @media (max-width: 900px) {{
+      .hero, .forms, .grid, .cards {{ grid-template-columns: 1fr; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="panel">
+        <div class="pill">2DVideo Local Test UI</div>
+        <h1>Pipeline control panel</h1>
+        <p>Run the pipeline, import characters, and inspect outputs directly in the browser.</p>
+        <p class="muted">{esc(message)}</p>
+      </div>
+      <div class="panel status">
+        <h2>Job Status</h2>
+        <pre>{esc(jobs_block)}</pre>
+        <div><strong>Registry characters:</strong> {len(registry)}</div>
+        <div><strong>Voice entries:</strong> {len(voice_registry)}</div>
+      </div>
+    </div>
+
+    <div class="panel form-card">
+      <h2>Run Pipeline</h2>
+      <div class="forms">
+        <form method="post" action="/action">
+          <input type="hidden" name="action" value="run_orchestrator" />
+          <label>Episodes
+            <input name="episodes" type="number" min="1" max="10" value="1" />
+          </label>
+          <label>Kind
+            <select name="kind">
+              <option value="poem">Poem</option>
+              <option value="story">Story</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <label>Bootstrap demo cast
+            <select name="bootstrap_demo">
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </label>
+          <button type="submit">Run Pipeline</button>
+        </form>
+
+        <form method="post" action="/action">
+          <input type="hidden" name="action" value="run_stage" />
+          <label>Stage
+            <select name="stage">
+              <option value="story">01 Story Engine</option>
+              <option value="asset_check">02 Asset Check</option>
+              <option value="tts">03 TTS</option>
+              <option value="rig_render">04 Rig Render</option>
+              <option value="broll">05 B-Roll</option>
+              <option value="upscale">06 Upscale</option>
+              <option value="assemble">07 Assemble</option>
+            </select>
+          </label>
+          <label>Episode path
+            <input name="episode_path" placeholder="output/2026-07-01/2026-07-01-poem-01/episode.json" />
+          </label>
+          <button type="submit" class="secondary">Run Stage</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel form-card">
+        <h2>Import Character Sheet</h2>
+        <form method="post" action="/action">
+          <input type="hidden" name="action" value="import_character" />
+          <label>Source image
+            <input name="source" value="{esc((ROOT / 'Char' / 'Gemini_Generated_Image_i0ao1ai0ao1ai0ao.png'))}" />
+          </label>
+          <label>Character id
+            <input name="character_id" value="char_01_girl" />
+          </label>
+          <label>Name
+            <input name="name" value="Maya" />
+          </label>
+          <button type="submit">Import / Reimport</button>
+        </form>
+      </div>
+
+      <div class="panel form-card">
+        <h2>Latest Outputs</h2>
+        <div class="cards">
+          {''.join(latest_cards) if latest_cards else '<p class="muted">No output folders yet.</p>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel wide form-card">
+        <h2>Character Registry</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Tier</th><th>Voice</th></tr></thead>
+          <tbody>{''.join(registry_rows) if registry_rows else '<tr><td colspan="4">No characters found.</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div class="panel wide form-card">
+        <h2>Voice Registry</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Reference Clip</th><th>Language</th></tr></thead>
+          <tbody>{''.join(voice_rows) if voice_rows else '<tr><td colspan="3">No voice entries found.</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div class="panel wide form-card">
+        <h2>Latest Daily Summary</h2>
+        <pre>{esc(latest_summary or 'No summary yet.')}</pre>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_HEAD(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if parsed.path != "/":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        page = _render_page()
+        data = page.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+
+    def do_GET(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if parsed.path != "/":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        global FLASH_MESSAGE
+        message = FLASH_MESSAGE
+        FLASH_MESSAGE = ""
+        page = _render_page(message=message)
+        data = page.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path != "/action":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length).decode("utf-8")
+        form = parse_qs(body)
+        action = form.get("action", [""])[0]
+        message = ""
+        try:
+            if action == "run_orchestrator":
+                episodes = form.get("episodes", ["1"])[0]
+                kind = form.get("kind", ["poem"])[0]
+                bootstrap_demo = form.get("bootstrap_demo", ["yes"])[0] == "yes"
+                command = [
+                    sys.executable,
+                    str(ROOT / "pipeline" / "orchestrator.py"),
+                    "--episodes",
+                    episodes,
+                    "--kind",
+                    kind,
+                ]
+                if bootstrap_demo:
+                    command.append("--bootstrap-demo")
+                start_job(command, f"orchestrator ({kind})")
+                message = f"Started orchestrator for {episodes} episode(s)."
+            elif action == "run_stage":
+                stage = form.get("stage", ["story"])[0]
+                episode_path = form.get("episode_path", [""])[0].strip()
+                if not episode_path:
+                    raise ValueError("episode_path is required for stage runs.")
+                script = {
+                    "story": "01_story_engine.py",
+                    "asset_check": "02_asset_check.py",
+                    "tts": "03_tts.py",
+                    "rig_render": "04_rig_render.py",
+                    "broll": "05_broll_gen.py",
+                    "upscale": "06_upscale.py",
+                    "assemble": "07_assemble.py",
+                }[stage]
+                command = [sys.executable, str(ROOT / "pipeline" / script)]
+                if stage == "story":
+                    command += ["--template", str(ROOT / "config" / "episode_templates" / "poem_template.json"), "--output", episode_path]
+                elif stage == "upscale":
+                    command += ["--input", episode_path, "--output", str(Path(episode_path).with_name("upscaled.mp4"))]
+                elif stage == "assemble":
+                    command += ["--episode", episode_path, "--output", str(Path(episode_path).with_name("assembled.mp4"))]
+                else:
+                    command += ["--episode", episode_path]
+                start_job(command, f"stage: {stage}")
+                message = f"Started stage {stage}."
+            elif action == "import_character":
+                source = form.get("source", [""])[0].strip()
+                character_id = form.get("character_id", [""])[0].strip()
+                name = form.get("name", [""])[0].strip()
+                if not source or not character_id or not name:
+                    raise ValueError("source, character_id, and name are required.")
+                command = [
+                    sys.executable,
+                    str(ROOT / "pipeline" / "import_character_sheet.py"),
+                    "--source",
+                    source,
+                    "--character-id",
+                    character_id,
+                    "--name",
+                    name,
+                ]
+                start_job(command, f"import: {character_id}")
+                message = f"Started import for {character_id}."
+            else:
+                raise ValueError(f"Unknown action: {action}")
+        except Exception as exc:
+            message = f"Error: {exc}"
+        global FLASH_MESSAGE
+        FLASH_MESSAGE = message
+        self.send_response(HTTPStatus.SEE_OTHER)
+        self.send_header("Location", "/")
+        self.end_headers()
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
+        return
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run the 2DVideo browser UI.")
+    parser.add_argument("--host", default=DEFAULT_HOST)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    args = parser.parse_args()
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    print(f"2DVideo UI running at http://{args.host}:{args.port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()
