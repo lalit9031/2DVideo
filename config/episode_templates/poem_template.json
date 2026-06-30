@@ -1,0 +1,11 @@
+{
+  "type": "poem",
+  "structure": "AABB or ABAB rhyme scheme",
+  "target_duration_sec": 150,
+  "notes": [
+    "Simple repetitive chorus",
+    "One clear action per verse",
+    "Schema-valid structured output only"
+  ]
+}
+

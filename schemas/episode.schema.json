@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/episode.schema.json",
+  "title": "Episode",
+  "type": "object",
+  "required": ["episode_id", "type", "target_duration_sec", "title", "characters_used", "shots"],
+  "properties": {
+    "episode_id": { "type": "string" },
+    "type": { "type": "string", "enum": ["poem", "story"] },
+    "target_duration_sec": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string" },
+    "characters_used": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "shots": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/shot" }
+    }
+  },
+  "$defs": {
+    "dialogueLine": {
+      "type": "object",
+      "required": ["character", "line", "voice_id"],
+      "properties": {
+        "character": { "type": "string" },
+        "line": { "type": "string" },
+        "voice_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "shot": {
+      "type": "object",
+      "required": ["shot_id", "duration_sec"],
+      "properties": {
+        "shot_id": { "type": "string" },
+        "characters": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "action": { "type": "string" },
+        "dialogue": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dialogueLine" }
+        },
+        "background": { "type": "string" },
+        "duration_sec": { "type": "integer", "minimum": 1 },
+        "broll": { "type": "boolean" },
+        "video_prompt": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+

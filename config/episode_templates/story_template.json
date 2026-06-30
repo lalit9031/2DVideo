@@ -1,0 +1,11 @@
+{
+  "type": "story",
+  "structure": "3 to 5 act learning story",
+  "target_duration_sec": 300,
+  "notes": [
+    "Single learning goal",
+    "Repeated lesson line",
+    "Schema-valid structured output only"
+  ]
+}
+

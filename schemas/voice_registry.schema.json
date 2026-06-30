@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/voice_registry.schema.json",
+  "title": "VoiceRegistry",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "required": ["reference_clip", "language", "pitch_shift", "speed"],
+    "properties": {
+      "reference_clip": { "type": "string" },
+      "language": { "type": "string" },
+      "pitch_shift": { "type": "number" },
+      "speed": { "type": "number" }
+    },
+    "additionalProperties": true
+  }
+}
+

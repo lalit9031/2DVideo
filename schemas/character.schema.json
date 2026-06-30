@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/character.schema.json",
+  "title": "Character",
+  "type": "object",
+  "required": ["character_id", "name", "voice_id", "rig_parts", "anim_cycles", "pivot_points"],
+  "properties": {
+    "character_id": { "type": "string" },
+    "name": { "type": "string" },
+    "voice_id": { "type": "string" },
+    "rig_parts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "anim_cycles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "pivot_points": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "number" },
+        "minItems": 2,
+        "maxItems": 2
+      }
+    }
+  },
+  "additionalProperties": true
+}
+

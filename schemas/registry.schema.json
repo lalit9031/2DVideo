@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/registry.schema.json",
+  "title": "CharacterRegistry",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "required": ["tier", "name", "voice_id", "character_json", "created"],
+    "properties": {
+      "tier": { "type": "string", "enum": ["cast", "guest"] },
+      "name": { "type": "string" },
+      "voice_id": { "type": "string" },
+      "character_json": { "type": "string" },
+      "created": { "type": "string" },
+      "source_episode": { "type": "string" }
+    },
+    "additionalProperties": true
+  }
+}
+

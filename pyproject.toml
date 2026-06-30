@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "2dvideo"
+version = "0.1.0"
+description = "Local pipeline for automated kids animation episodes."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pipeline*"]
+
