@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -16,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "output"
+UI_PROGRESS_FILE = OUTPUT_DIR / ".ui_progress.json"
 CONFIG_DIR = ROOT / "config"
 CHAR_DIR = ROOT / "config" / "characters"
 VOICE_DIR = ROOT / "config" / "voices"
@@ -31,6 +33,9 @@ class JobState:
     started: float | None = None
     finished: float | None = None
     returncode: int | None = None
+    progress: float | None = None
+    stage: str = ""
+    message: str = ""
     output: str = ""
     error: str = ""
 
@@ -42,6 +47,9 @@ class JobState:
             "started": self.started,
             "finished": self.finished,
             "returncode": self.returncode,
+            "progress": self.progress,
+            "stage": self.stage,
+            "message": self.message,
             "output": self.output,
             "error": self.error,
         }
@@ -55,9 +63,14 @@ JOB_PROCESS: subprocess.Popen[str] | None = None
 
 def _run_command(command: list[str]) -> None:
     global JOB_PROCESS
+    env = os.environ.copy()
+    env["2DVIDEO_PROGRESS_FILE"] = str(UI_PROGRESS_FILE)
+    UI_PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    UI_PROGRESS_FILE.write_text(json.dumps({"percent": 0, "stage": "starting", "message": "starting", "status": "running"}) + "\n", encoding="utf-8")
     proc = subprocess.Popen(
         command,
         cwd=ROOT,
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -69,6 +82,9 @@ def _run_command(command: list[str]) -> None:
         STATE.started = time.time()
         STATE.finished = None
         STATE.returncode = None
+        STATE.progress = 0.0
+        STATE.stage = "starting"
+        STATE.message = "starting"
         STATE.output = ""
         STATE.error = ""
         JOB_PROCESS = proc
@@ -79,7 +95,25 @@ def _run_command(command: list[str]) -> None:
         STATE.output = stdout or ""
         STATE.error = stderr or ""
         STATE.status = "done" if proc.returncode == 0 else "failed"
+        STATE.progress = 100.0 if proc.returncode == 0 else STATE.progress
+        if proc.returncode != 0 and STATE.progress is None:
+            STATE.progress = 0.0
         JOB_PROCESS = None
+    try:
+        UI_PROGRESS_FILE.write_text(
+            json.dumps(
+                {
+                    "percent": 100 if proc.returncode == 0 else (STATE.progress or 0),
+                    "stage": "complete" if proc.returncode == 0 else "failed",
+                    "message": "done" if proc.returncode == 0 else "failed",
+                    "status": "done" if proc.returncode == 0 else "failed",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
 
 
 def start_job(command: list[str], title: str) -> None:
@@ -109,6 +143,9 @@ def stop_job() -> None:
     with LOCK:
         STATE.status = "stopped"
         STATE.finished = time.time()
+        STATE.progress = 0.0
+        STATE.stage = "stopped"
+        STATE.message = "stopped"
 
 
 def _latest_output_dirs() -> list[Path]:
@@ -136,11 +173,15 @@ def _read_json(path: Path) -> Any | None:
         return None
 
 
-def _job_summary() -> str:
+def _job_summary(progress: dict[str, Any] | None = None) -> str:
     with LOCK:
         state = STATE.as_dict()
+    progress = progress or {}
     started = f"{time.ctime(state['started'])}" if state["started"] else "n/a"
     finished = f"{time.ctime(state['finished'])}" if state["finished"] else "n/a"
+    progress_pct = progress.get("percent", state.get("progress"))
+    progress_stage = progress.get("stage", state.get("stage"))
+    progress_message = progress.get("message", state.get("message"))
     lines = [
         f"Status: {state['status']}",
         f"Title: {state['title']}",
@@ -148,8 +189,18 @@ def _job_summary() -> str:
         f"Started: {started}",
         f"Finished: {finished}",
         f"Return code: {state['returncode']}",
+        f"Progress: {progress_pct if progress_pct is not None else 'n/a'}%",
+        f"Stage: {progress_stage or 'n/a'}",
+        f"Message: {progress_message or 'n/a'}",
     ]
     return "\n".join(lines)
+
+
+def _read_progress() -> dict[str, Any]:
+    try:
+        return json.loads(UI_PROGRESS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 
 def _render_page(message: str = "") -> str:
@@ -163,7 +214,12 @@ def _render_page(message: str = "") -> str:
         summary_path = latest_dirs[0] / "daily_summary.json"
         if summary_path.exists():
             latest_summary = _read_text(summary_path, 10000)
-    jobs_block = _job_summary()
+    progress = _read_progress()
+    progress_pct = float(progress.get("percent", state.get("progress") or 0.0) or 0.0)
+    progress_stage = progress.get("stage", state.get("stage") or "")
+    progress_message = progress.get("message", state.get("message") or "")
+    auto_refresh = state["status"] == "running" or progress.get("status") == "running"
+    jobs_block = _job_summary(progress)
 
     def esc(value: Any) -> str:
         return html.escape("" if value is None else str(value))
@@ -194,6 +250,7 @@ def _render_page(message: str = "") -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {"<meta http-equiv=\"refresh\" content=\"2\" />" if auto_refresh else ""}
   <title>2DVideo Local UI</title>
   <style>
     :root {{
@@ -245,6 +302,25 @@ def _render_page(message: str = "") -> str:
       display: grid;
       gap: 8px;
       font-size: 0.95rem;
+    }}
+    .progress {{
+      display: grid;
+      gap: 8px;
+      margin-bottom: 10px;
+    }}
+    .progress-bar {{
+      width: 100%;
+      height: 14px;
+      border-radius: 999px;
+      background: rgba(30,41,59,.10);
+      overflow: hidden;
+    }}
+    .progress-bar > div {{
+      height: 100%;
+      width: {progress_pct:.2f}%;
+      background: linear-gradient(90deg, var(--accent), #22c55e);
+      border-radius: 999px;
+      transition: width 0.3s ease;
     }}
     .status-grid {{
       display: grid;
@@ -347,6 +423,10 @@ def _render_page(message: str = "") -> str:
       </div>
       <div class="panel status">
         <h2>Job Status</h2>
+        <div class="progress">
+          <div class="progress-bar"><div></div></div>
+          <div><strong>{progress_pct:.1f}%</strong> {esc(progress_stage)} {esc(progress_message)}</div>
+        </div>
         <pre>{esc(jobs_block)}</pre>
         <div class="status-grid">
           <button onclick="location.reload()" type="button">Refresh Status</button>

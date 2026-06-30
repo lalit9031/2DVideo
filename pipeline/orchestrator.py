@@ -12,6 +12,7 @@ if __package__ is None or __package__ == "":  # pragma: no cover
 
 from pipeline.bootstrap import bootstrap_demo_cast
 from pipeline.common import OUTPUT_DIR, ROOT, ensure_dir, load_registry, today_iso, write_json
+from pipeline.progress import progress_path_from_env, write_progress
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", help="Override output root.")
     parser.add_argument("--template-poem", default="config/episode_templates/poem_template.json")
     parser.add_argument("--template-story", default="config/episode_templates/story_template.json")
+    parser.add_argument("--progress-file", help="Path to write job progress JSON.")
     return parser
 
 
@@ -55,11 +57,15 @@ def _template_for(kind: str, poem: str, story: str) -> str:
 
 def main() -> None:
     args = build_parser().parse_args()
+    progress_file = Path(args.progress_file) if args.progress_file else progress_path_from_env()
     if args.bootstrap_demo or not load_registry():
         bootstrap_demo_cast()
     root = ensure_dir(Path(args.output_root) if args.output_root else OUTPUT_DIR / today_iso())
     kinds = ["poem", "story"] if args.kind == "both" else [args.kind]
     summaries = []
+    total_steps = max(1, args.episodes * len(STAGES))
+    completed_steps = 0
+    write_progress(progress_file, percent=0.0, stage="bootstrap", message="Starting pipeline", status="running")
     for index in range(args.episodes):
         kind = kinds[index % len(kinds)]
         episode_id = f"{today_iso()}-{kind}-{index + 1:02d}"
@@ -83,9 +89,24 @@ def main() -> None:
             ("upscale", [script_arg("--input", str(assembled_path)), script_arg("--output", str(final_path))]),
         ]
         for stage_name, stage_args in stage_specs:
+            write_progress(
+                progress_file,
+                percent=(completed_steps / total_steps) * 100.0,
+                stage=stage_name,
+                message=f"{episode_id}: starting {stage_name}",
+                status="running",
+            )
             started = perf_counter()
             _run(str(ROOT / stage_name_to_script(stage_name)), stage_args)
             timings.append({"stage": stage_name, "seconds": round(perf_counter() - started, 3)})
+            completed_steps += 1
+            write_progress(
+                progress_file,
+                percent=(completed_steps / total_steps) * 100.0,
+                stage=stage_name,
+                message=f"{episode_id}: finished {stage_name}",
+                status="running",
+            )
         summaries.append(
             {
                 "episode_id": episode_id,
@@ -96,6 +117,7 @@ def main() -> None:
             }
         )
     write_json(root / "daily_summary.json", summaries)
+    write_progress(progress_file, percent=100.0, stage="complete", message="Pipeline complete", status="done")
     print(root / "daily_summary.json")
 
 
