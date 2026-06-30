@@ -1,2 +1,32 @@
-{}
-
+{
+  "char_01_bunny": {
+    "reference_clip": "config/voices/char_01_bunny_ref.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.0
+  },
+  "char_02_fox": {
+    "reference_clip": "config/voices/char_02_fox_ref.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.0
+  },
+  "char_03_bear": {
+    "reference_clip": "config/voices/char_03_bear_ref.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.0
+  },
+  "char_04_cat": {
+    "reference_clip": "config/voices/char_04_cat_ref.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.0
+  },
+  "char_05_owl": {
+    "reference_clip": "config/voices/char_05_owl_ref.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.0
+  }
+}

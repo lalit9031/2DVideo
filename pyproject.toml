@@ -8,7 +8,12 @@ version = "0.1.0"
 description = "Local pipeline for automated kids animation episodes."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "jsonschema>=4.22",
+  "numpy>=1.26",
+  "Pillow>=10.0",
+  "opencv-python>=4.9",
+]
 
 [tool.setuptools]
 package-dir = {"" = "."}
@@ -16,4 +21,3 @@ package-dir = {"" = "."}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["pipeline*"]
-

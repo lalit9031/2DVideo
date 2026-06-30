@@ -1,2 +1,37 @@
-{}
-
+{
+  "char_01_bunny": {
+    "tier": "cast",
+    "name": "Bibi the Bunny",
+    "voice_id": "char_01_bunny",
+    "character_json": "config/characters/char_01_bunny.json",
+    "created": "2026-07-01T02:44:37"
+  },
+  "char_02_fox": {
+    "tier": "cast",
+    "name": "Fifi the Fox",
+    "voice_id": "char_02_fox",
+    "character_json": "config/characters/char_02_fox.json",
+    "created": "2026-07-01T02:44:37"
+  },
+  "char_03_bear": {
+    "tier": "cast",
+    "name": "Bobo the Bear",
+    "voice_id": "char_03_bear",
+    "character_json": "config/characters/char_03_bear.json",
+    "created": "2026-07-01T02:44:37"
+  },
+  "char_04_cat": {
+    "tier": "cast",
+    "name": "Coco the Cat",
+    "voice_id": "char_04_cat",
+    "character_json": "config/characters/char_04_cat.json",
+    "created": "2026-07-01T02:44:37"
+  },
+  "char_05_owl": {
+    "tier": "cast",
+    "name": "Ollie the Owl",
+    "voice_id": "char_05_owl",
+    "character_json": "config/characters/char_05_owl.json",
+    "created": "2026-07-01T02:44:37"
+  }
+}

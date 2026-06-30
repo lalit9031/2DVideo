@@ -1,0 +1,41 @@
+{
+  "character_id": "char_02_fox",
+  "name": "Fifi the Fox",
+  "voice_id": "char_02_fox",
+  "rig_parts": [
+    "head",
+    "eyes_open",
+    "eyes_blink",
+    "mouth_closed",
+    "mouth_open",
+    "mouth_wide",
+    "body",
+    "arm_l",
+    "arm_r",
+    "leg_l",
+    "leg_r"
+  ],
+  "anim_cycles": [
+    "idle",
+    "bounce_wave",
+    "walk",
+    "point",
+    "jump",
+    "sleep"
+  ],
+  "pivot_points": {
+    "head": [
+      0,
+      -120
+    ],
+    "arm_l": [
+      -60,
+      -20
+    ],
+    "arm_r": [
+      60,
+      -20
+    ]
+  },
+  "asset_dir": "config/characters/char_02_fox"
+}

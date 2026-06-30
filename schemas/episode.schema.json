@@ -18,7 +18,12 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/shot" }
-    }
+    },
+    "generated_from_template": { "type": "string" },
+    "created": { "type": "string" },
+    "tts_manifest": { "type": "array" },
+    "render_manifest": { "type": "array" },
+    "broll_manifest": { "type": "array" }
   },
   "$defs": {
     "dialogueLine": {
@@ -27,7 +32,9 @@
       "properties": {
         "character": { "type": "string" },
         "line": { "type": "string" },
-        "voice_id": { "type": "string" }
+        "voice_id": { "type": "string" },
+        "audio_path": { "type": "string" },
+        "timings": { "type": "array" }
       },
       "additionalProperties": false
     },
@@ -48,11 +55,11 @@
         "background": { "type": "string" },
         "duration_sec": { "type": "integer", "minimum": 1 },
         "broll": { "type": "boolean" },
-        "video_prompt": { "type": "string" }
+        "video_prompt": { "type": "string" },
+        "rendered_video": { "type": "string" }
       },
       "additionalProperties": false
     }
   },
   "additionalProperties": false
 }
-
