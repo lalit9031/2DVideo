@@ -216,11 +216,15 @@ def _job_summary(progress: dict[str, Any] | None = None) -> str:
     progress = progress or {}
     started = f"{time.ctime(state['started'])}" if state["started"] else "n/a"
     finished = f"{time.ctime(state['finished'])}" if state["finished"] else "n/a"
+    progress_status = progress.get("status", "")
+    status = state["status"]
+    if status == "idle" and progress_status == "running":
+        status = "running"
     progress_pct = progress.get("percent", state.get("progress"))
     progress_stage = progress.get("stage", state.get("stage"))
     progress_message = progress.get("message", state.get("message"))
     lines = [
-        f"Status: {state['status']}",
+        f"Status: {status}",
         f"Title: {state['title']}",
         f"Command: {' '.join(state['command']) if state['command'] else 'n/a'}",
         f"Started: {started}",

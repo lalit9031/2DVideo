@@ -7,6 +7,8 @@ from typing import Any
 
 
 PROGRESS_ENV = "2DVIDEO_PROGRESS_FILE"
+STAGE_START_ENV = "2DVIDEO_STAGE_PROGRESS_START"
+STAGE_END_ENV = "2DVIDEO_STAGE_PROGRESS_END"
 
 
 def progress_path_from_env() -> Path | None:
@@ -14,6 +16,12 @@ def progress_path_from_env() -> Path | None:
     if not value:
         return None
     return Path(value)
+
+
+def progress_span_from_env() -> tuple[float, float]:
+    start = float(os.environ.get(STAGE_START_ENV, "0"))
+    end = float(os.environ.get(STAGE_END_ENV, "100"))
+    return start, end
 
 
 def read_progress(path: Path | None) -> dict[str, Any]:
@@ -37,3 +45,16 @@ def write_progress(path: Path | None, *, percent: float, stage: str = "", messag
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
+
+def write_stage_progress(
+    path: Path | None,
+    *,
+    fraction: float,
+    stage: str = "",
+    message: str = "",
+    status: str = "running",
+) -> None:
+    start, end = progress_span_from_env()
+    fraction = max(0.0, min(1.0, float(fraction)))
+    percent = start + (end - start) * fraction
+    write_progress(path, percent=percent, stage=stage, message=message, status=status)

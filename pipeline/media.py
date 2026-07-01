@@ -102,7 +102,7 @@ def export_video(frames: list[np.ndarray], output_path: Path, fps: float) -> Non
     height, width = frames[0].shape[:2]
     try:
         container = av.open(str(output_path), mode="w")
-        stream = container.add_stream("libx264", rate=fps)
+        stream = container.add_stream("libx264", rate=Fraction(str(fps)))
         stream.width = width
         stream.height = height
         stream.pix_fmt = "yuv420p"
@@ -147,10 +147,18 @@ def extract_audio_to_wav(input_path: Path, output_path: Path) -> Path | None:
     try:
         for packet in container.demux(audio_stream):
             for frame in packet.decode():
-                pcm = frame.to_ndarray()
-                if pcm.ndim > 1:
-                    pcm = pcm[0]
-                samples.append(np.asarray(pcm, dtype=np.int16))
+                pcm = np.asarray(frame.to_ndarray())
+                if pcm.ndim == 2:
+                    if pcm.shape[0] == 1:
+                        pcm = pcm[0]
+                    elif pcm.shape[1] == 1:
+                        pcm = pcm[:, 0]
+                    else:
+                        pcm = pcm.reshape(-1)
+                pcm = pcm.astype(np.float32).reshape(-1)
+                if pcm.size and np.max(np.abs(pcm)) <= 1.5:
+                    pcm = np.clip(pcm * 32767.0, -32768, 32767)
+                samples.append(pcm.astype(np.int16))
     finally:
         container.close()
     merged = np.concatenate(samples) if samples else np.zeros(1, dtype=np.int16)
@@ -187,6 +195,23 @@ def mux_video_audio(video_path: Path, audio_path: Path | None, output_path: Path
     out_video.options = {"crf": "18"}
     out_audio = output.add_stream("aac", rate=audio_stream.rate or SAMPLE_RATE)
     out_audio.layout = "mono"
+    sample_cursor = 0
+    for packet in audio_container.demux(audio_stream):
+        for frame in packet.decode():
+            pcm = np.asarray(frame.to_ndarray())
+            if pcm.ndim == 1:
+                pcm = pcm.reshape(1, -1)
+            elif pcm.shape[0] != 1 and pcm.shape[1] == 1:
+                pcm = pcm.T
+            aframe = av.AudioFrame.from_ndarray(pcm.astype(np.int16), format="s16p", layout="mono")
+            aframe.sample_rate = audio_stream.rate or SAMPLE_RATE
+            aframe.pts = sample_cursor
+            aframe.time_base = Fraction(1, audio_stream.rate or SAMPLE_RATE)
+            sample_cursor += aframe.samples
+            for encoded in out_audio.encode(aframe):
+                output.mux(encoded)
+    for encoded in out_audio.encode():
+        output.mux(encoded)
     for packet in video_container.demux(video_stream):
         for frame in packet.decode():
             if frame.width != out_video.width or frame.height != out_video.height:
@@ -197,13 +222,6 @@ def mux_video_audio(video_path: Path, audio_path: Path | None, output_path: Path
                 output.mux(encoded)
     for encoded in out_video.encode():
         output.mux(encoded)
-    for packet in audio_container.demux(audio_stream):
-        for frame in packet.decode():
-            frame.sample_rate = audio_stream.rate or SAMPLE_RATE
-            for encoded in out_audio.encode(frame):
-                output.mux(encoded)
-    for encoded in out_audio.encode():
-        output.mux(encoded)
     output.close()
     video_container.close()
     audio_container.close()
@@ -213,42 +231,19 @@ def write_video_with_audio(frames: list[np.ndarray], audio_path: Path | None, ou
     if not frames:
         raise ValueError("No frames supplied for video export.")
     ensure_dir(output_path.parent)
-    width = frames[0].shape[1]
-    height = frames[0].shape[0]
-    container = av.open(str(output_path), mode="w")
-    vstream = container.add_stream("libx264", rate=fps)
-    vstream.width = width
-    vstream.height = height
-    vstream.pix_fmt = "yuv420p"
-    vstream.options = {"crf": "18"}
-    for frame in frames:
-        vf = av.VideoFrame.from_ndarray(frame, format="rgb24")
-        for packet in vstream.encode(vf):
-            container.mux(packet)
-    for packet in vstream.encode():
-        container.mux(packet)
-
-    if audio_path is not None and audio_path.exists():
-        with wave.open(str(audio_path), "rb") as wav:
-            sample_rate = wav.getframerate()
-            channels = wav.getnchannels()
-            if channels != 1:
-                raise ValueError("Only mono audio is supported in this pipeline.")
-            pcm = np.frombuffer(wav.readframes(wav.getnframes()), dtype=np.int16)
-        astream = container.add_stream("aac", rate=sample_rate)
-        astream.layout = "mono"
-        chunk = 1024
-        for start in range(0, len(pcm), chunk):
-            block = pcm[start:start + chunk]
-            if block.size == 0:
-                continue
-            aframe = av.AudioFrame.from_ndarray(block.reshape(1, -1), format="s16", layout="mono")
-            aframe.sample_rate = sample_rate
-            for packet in astream.encode(aframe):
-                container.mux(packet)
-        for packet in astream.encode():
-            container.mux(packet)
-    container.close()
+    temp_video = output_path.with_suffix(".video-only.mp4")
+    export_video(frames, temp_video, fps)
+    try:
+        if audio_path is None or not audio_path.exists():
+            temp_video.replace(output_path)
+            return
+        mux_video_audio(temp_video, audio_path, output_path)
+    finally:
+        if temp_video.exists():
+            try:
+                temp_video.unlink()
+            except Exception:
+                pass
 
 
 def read_video_frames(path: Path) -> tuple[list[np.ndarray], float]:

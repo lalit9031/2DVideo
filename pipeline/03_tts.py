@@ -9,6 +9,7 @@ if __package__ is None or __package__ == "":  # pragma: no cover
 
 from pipeline.common import ensure_dir, load_voice_registry, read_json, write_json
 from pipeline.media import SAMPLE_RATE, synthesize_voice_clip
+from pipeline.progress import progress_path_from_env, write_stage_progress
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,8 +33,14 @@ def main() -> None:
     work_dir = ensure_dir(Path(args.work_dir) if args.work_dir else episode_path.parent / "tts")
     audio_dir = ensure_dir(work_dir / "dialogue")
     manifest: list[dict] = []
-    for shot in episode.get("shots", []):
-        for idx, line in enumerate(shot.get("dialogue", [])):
+    dialogue_items = [
+        (shot_index, shot, line_index, line)
+        for shot_index, shot in enumerate(episode.get("shots", []))
+        for line_index, line in enumerate(shot.get("dialogue", []))
+    ]
+    total_items = max(1, len(dialogue_items))
+    progress_file = progress_path_from_env()
+    for item_index, (_, shot, idx, line) in enumerate(dialogue_items, start=1):
             voice_id = line["voice_id"]
             if voice_id not in voice_registry:
                 raise KeyError(f"Missing voice registry entry for {voice_id}")
@@ -60,6 +67,12 @@ def main() -> None:
                     "audio_path": str(audio_path),
                     "sample_rate": SAMPLE_RATE,
                 }
+            )
+            write_stage_progress(
+                progress_file,
+                fraction=item_index / total_items,
+                stage="tts",
+                message=f"TTS {item_index}/{total_items}: {shot['shot_id']}",
             )
     episode["tts_manifest"] = manifest
     output_path = Path(args.output) if args.output else episode_path

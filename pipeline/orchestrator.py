@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -12,7 +13,7 @@ if __package__ is None or __package__ == "":  # pragma: no cover
 
 from pipeline.bootstrap import bootstrap_demo_cast
 from pipeline.common import OUTPUT_DIR, ROOT, ensure_dir, load_registry, today_iso, write_json
-from pipeline.progress import progress_path_from_env, write_progress
+from pipeline.progress import progress_path_from_env, read_progress, write_progress
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ STAGES: tuple[Stage, ...] = (
     Stage("broll", "pipeline/05_broll_gen.py"),
     Stage("assemble", "pipeline/07_assemble.py"),
     Stage("upscale", "pipeline/06_upscale.py"),
+    Stage("qa", "pipeline/test_episode.py"),
 )
 
 
@@ -44,9 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run(script: str, args: list[str]) -> None:
+def _run(script: str, args: list[str], *, env: dict[str, str] | None = None) -> None:
     cmd = [sys.executable, script, *args]
-    result = subprocess.run(cmd, check=False, text=True, capture_output=True)
+    result = subprocess.run(cmd, check=False, text=True, capture_output=True, env=env)
     if result.returncode != 0:
         raise RuntimeError(f"Stage failed: {script}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
 
@@ -57,68 +59,89 @@ def _template_for(kind: str, poem: str, story: str) -> str:
 
 def main() -> None:
     args = build_parser().parse_args()
-    progress_file = Path(args.progress_file) if args.progress_file else progress_path_from_env()
-    if args.bootstrap_demo or not load_registry():
-        bootstrap_demo_cast()
-    root = ensure_dir(Path(args.output_root) if args.output_root else OUTPUT_DIR / today_iso())
-    kinds = ["poem", "story"] if args.kind == "both" else [args.kind]
-    summaries = []
-    total_steps = max(1, args.episodes * len(STAGES))
-    completed_steps = 0
-    write_progress(progress_file, percent=0.0, stage="bootstrap", message="Starting pipeline", status="running")
-    for index in range(args.episodes):
-        kind = kinds[index % len(kinds)]
-        episode_id = f"{today_iso()}-{kind}-{index + 1:02d}"
-        work_dir = ensure_dir(root / episode_id)
-        episode_path = work_dir / "episode.json"
-        validated_path = work_dir / "episode.validated.json"
-        tts_path = work_dir / "episode.tts.json"
-        rendered_path = work_dir / "episode.rendered.json"
-        broll_path = work_dir / "episode.broll.json"
-        assembled_path = work_dir / "assembled.mp4"
-        final_path = work_dir / "final.mp4"
-        template = _template_for(kind, args.template_poem, args.template_story)
-        timings = []
-        stage_specs = [
-            ("story", [script_arg("--template", template), script_arg("--output", str(episode_path)), script_arg("--work-dir", str(work_dir)), script_arg("--episode-id", episode_id), script_arg("--kind", kind)]),
-            ("asset_check", [script_arg("--episode", str(episode_path)), script_arg("--output", str(validated_path))]),
-            ("tts", [script_arg("--episode", str(validated_path)), script_arg("--work-dir", str(work_dir / "tts")), script_arg("--output", str(tts_path))]),
-            ("rig_render", [script_arg("--episode", str(tts_path)), script_arg("--work-dir", str(work_dir / "renders")), script_arg("--output", str(rendered_path))]),
-            ("broll", [script_arg("--episode", str(rendered_path)), script_arg("--work-dir", str(work_dir / "broll")), script_arg("--output", str(broll_path))]),
-            ("assemble", [script_arg("--episode", str(broll_path)), script_arg("--output", str(assembled_path))]),
-            ("upscale", [script_arg("--input", str(assembled_path)), script_arg("--output", str(final_path))]),
-        ]
-        for stage_name, stage_args in stage_specs:
-            write_progress(
-                progress_file,
-                percent=(completed_steps / total_steps) * 100.0,
-                stage=stage_name,
-                message=f"{episode_id}: starting {stage_name}",
-                status="running",
+    progress_file = Path(args.progress_file) if args.progress_file else (progress_path_from_env() or (OUTPUT_DIR / ".ui_progress.json"))
+    current_stage = "bootstrap"
+    try:
+        if args.bootstrap_demo or not load_registry():
+            bootstrap_demo_cast()
+        root = ensure_dir(Path(args.output_root) if args.output_root else OUTPUT_DIR / today_iso())
+        kinds = ["poem", "story"] if args.kind == "both" else [args.kind]
+        summaries = []
+        total_steps = max(1, args.episodes * len(STAGES))
+        completed_steps = 0
+        write_progress(progress_file, percent=0.0, stage="bootstrap", message="Starting pipeline", status="running")
+        for index in range(args.episodes):
+            kind = kinds[index % len(kinds)]
+            episode_id = f"{today_iso()}-{kind}-{index + 1:02d}"
+            work_dir = ensure_dir(root / episode_id)
+            episode_path = work_dir / "episode.json"
+            validated_path = work_dir / "episode.validated.json"
+            tts_path = work_dir / "episode.tts.json"
+            rendered_path = work_dir / "episode.rendered.json"
+            broll_path = work_dir / "episode.broll.json"
+            assembled_path = work_dir / "assembled.mp4"
+            final_path = work_dir / "final.mp4"
+            qa_path = work_dir / "final.qa_report.json"
+            template = _template_for(kind, args.template_poem, args.template_story)
+            timings = []
+            stage_specs = [
+                ("story", [script_arg("--template", template), script_arg("--output", str(episode_path)), script_arg("--work-dir", str(work_dir)), script_arg("--episode-id", episode_id), script_arg("--kind", kind)]),
+                ("asset_check", [script_arg("--episode", str(episode_path)), script_arg("--output", str(validated_path))]),
+                ("tts", [script_arg("--episode", str(validated_path)), script_arg("--work-dir", str(work_dir / "tts")), script_arg("--output", str(tts_path))]),
+                ("rig_render", [script_arg("--episode", str(tts_path)), script_arg("--work-dir", str(work_dir / "renders")), script_arg("--output", str(rendered_path))]),
+                ("broll", [script_arg("--episode", str(rendered_path)), script_arg("--work-dir", str(work_dir / "broll")), script_arg("--output", str(broll_path))]),
+                ("assemble", [script_arg("--episode", str(broll_path)), script_arg("--output", str(assembled_path))]),
+                ("upscale", [script_arg("--input", str(assembled_path)), script_arg("--output", str(final_path))]),
+                ("qa", [script_arg("--episode", str(broll_path)), script_arg("--input", str(final_path)), script_arg("--output", str(qa_path))]),
+            ]
+            for stage_name, stage_args in stage_specs:
+                current_stage = stage_name
+                stage_start = (completed_steps / total_steps) * 100.0
+                stage_end = ((completed_steps + 1) / total_steps) * 100.0
+                stage_env = os.environ.copy()
+                stage_env["2DVIDEO_PROGRESS_FILE"] = str(progress_file)
+                stage_env["2DVIDEO_STAGE_PROGRESS_START"] = f"{stage_start}"
+                stage_env["2DVIDEO_STAGE_PROGRESS_END"] = f"{stage_end}"
+                write_progress(
+                    progress_file,
+                    percent=stage_start,
+                    stage=stage_name,
+                    message=f"{episode_id}: starting {stage_name}",
+                    status="running",
+                )
+                started = perf_counter()
+                _run(str(ROOT / stage_name_to_script(stage_name)), stage_args, env=stage_env)
+                timings.append({"stage": stage_name, "seconds": round(perf_counter() - started, 3)})
+                completed_steps += 1
+                write_progress(
+                    progress_file,
+                    percent=(completed_steps / total_steps) * 100.0,
+                    stage=stage_name,
+                    message=f"{episode_id}: finished {stage_name}",
+                    status="running",
+                )
+            summaries.append(
+                {
+                    "episode_id": episode_id,
+                    "kind": kind,
+                    "work_dir": str(work_dir),
+                    "final_path": str(final_path),
+                    "timings": timings,
+                }
             )
-            started = perf_counter()
-            _run(str(ROOT / stage_name_to_script(stage_name)), stage_args)
-            timings.append({"stage": stage_name, "seconds": round(perf_counter() - started, 3)})
-            completed_steps += 1
-            write_progress(
-                progress_file,
-                percent=(completed_steps / total_steps) * 100.0,
-                stage=stage_name,
-                message=f"{episode_id}: finished {stage_name}",
-                status="running",
-            )
-        summaries.append(
-            {
-                "episode_id": episode_id,
-                "kind": kind,
-                "work_dir": str(work_dir),
-                "final_path": str(final_path),
-                "timings": timings,
-            }
+        write_json(root / "daily_summary.json", summaries)
+        write_progress(progress_file, percent=100.0, stage="complete", message="Pipeline complete", status="done")
+        print(root / "daily_summary.json")
+    except Exception as exc:
+        failed_progress = read_progress(progress_file)
+        write_progress(
+            progress_file,
+            percent=float(failed_progress.get("percent", 0.0) or 0.0),
+            stage=str(failed_progress.get("stage", current_stage) or current_stage),
+            message=str(exc),
+            status="failed",
         )
-    write_json(root / "daily_summary.json", summaries)
-    write_progress(progress_file, percent=100.0, stage="complete", message="Pipeline complete", status="done")
-    print(root / "daily_summary.json")
+        raise
 
 
 def script_arg(flag: str, value: str) -> str:
@@ -133,6 +156,7 @@ def stage_name_to_script(stage_name: str) -> str:
         "broll": "pipeline/05_broll_gen.py",
         "assemble": "pipeline/07_assemble.py",
         "upscale": "pipeline/06_upscale.py",
+        "qa": "pipeline/test_episode.py",
     }[stage_name]
 
 

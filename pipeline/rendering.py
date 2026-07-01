@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 import cv2
 import numpy as np
@@ -136,6 +136,7 @@ def render_shot(
     width: int = 1280,
     height: int = 720,
     fps: float = FPS,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> ShotRenderResult:
     duration = float(shot.get("duration_sec", 4))
     frame_count = max(1, int(round(duration * fps)))
@@ -146,6 +147,7 @@ def render_shot(
     active_character = dialogue[0]["character"] if dialogue else (characters[0] if characters else None)
     timing = dialogue[0].get("timings", []) if dialogue else []
     action = shot.get("action", "idle")
+    progress_step = max(1, frame_count // 20)
     for index in range(frame_count):
         time_sec = index / fps
         background = _background((width, height), shot.get("background", "meadow_day"), time_sec)
@@ -179,6 +181,8 @@ def render_shot(
                     y = int(height * 0.72 + math.cos(time_sec * 1.7 + idx) * 12)
                     draw.ellipse((x, y, x + 26, y + 26), fill=(255, 146, 182, 220))
         frames.append(np.array(canvas.convert("RGB")))
+        if progress_callback is not None and ((index + 1) % progress_step == 0 or index + 1 == frame_count):
+            progress_callback((index + 1) / frame_count)
     from pipeline.media import export_video
 
     export_video(frames, output_path, fps)
@@ -192,11 +196,13 @@ def render_broll(
     width: int = 1280,
     height: int = 720,
     fps: float = FPS,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> ShotRenderResult:
     duration = float(shot.get("duration_sec", 4))
     frame_count = max(1, int(round(duration * fps)))
     frames: list[np.ndarray] = []
     prompt = shot.get("video_prompt", "broll").lower()
+    progress_step = max(1, frame_count // 20)
     for index in range(frame_count):
         t = index / fps
         scene = "park_sunny"
@@ -218,6 +224,8 @@ def render_broll(
             y = int(520 + math.cos(t * 1.8 + i) * 14)
             draw.ellipse((x, y, x + 46, y + 46), fill=(255, 190 - hue // 3, 140 + hue // 4, 200))
         frames.append(np.array(canvas.convert("RGB")))
+        if progress_callback is not None and ((index + 1) % progress_step == 0 or index + 1 == frame_count):
+            progress_callback((index + 1) / frame_count)
     from pipeline.media import export_video
 
     export_video(frames, output_path, fps)
