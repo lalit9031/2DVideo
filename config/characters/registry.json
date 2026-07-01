@@ -1,45 +1,79 @@
 {
-  "char_01_bunny": {
+  "appy": {
     "tier": "cast",
-    "name": "Bibi the Bunny",
-    "voice_id": "char_01_bunny",
-    "character_json": "config/characters/char_01_bunny.json",
-    "created": "2026-07-01T02:44:37"
+    "name": "Appy",
+    "voice_id": "appy",
+    "character_json": "config/characters/appy.json",
+    "created": "2026-07-01T21:43:00"
   },
-  "char_02_fox": {
+  "nana": {
     "tier": "cast",
-    "name": "Fifi the Fox",
-    "voice_id": "char_02_fox",
-    "character_json": "config/characters/char_02_fox.json",
-    "created": "2026-07-01T02:44:37"
+    "name": "Nana",
+    "voice_id": "nana",
+    "character_json": "config/characters/nana.json",
+    "created": "2026-07-01T21:43:00"
   },
-  "char_03_bear": {
+  "ozzy": {
     "tier": "cast",
-    "name": "Bobo the Bear",
-    "voice_id": "char_03_bear",
-    "character_json": "config/characters/char_03_bear.json",
-    "created": "2026-07-01T02:44:37"
+    "name": "Ozzy",
+    "voice_id": "ozzy",
+    "character_json": "config/characters/ozzy.json",
+    "created": "2026-07-01T21:43:00"
   },
-  "char_04_cat": {
+  "grapey": {
     "tier": "cast",
-    "name": "Coco the Cat",
-    "voice_id": "char_04_cat",
-    "character_json": "config/characters/char_04_cat.json",
-    "created": "2026-07-01T02:44:37"
+    "name": "Grapey",
+    "voice_id": "grapey",
+    "character_json": "config/characters/grapey.json",
+    "created": "2026-07-01T21:43:00"
   },
-  "char_05_owl": {
+  "berry": {
     "tier": "cast",
-    "name": "Ollie the Owl",
-    "voice_id": "char_05_owl",
-    "character_json": "config/characters/char_05_owl.json",
-    "created": "2026-07-01T02:44:37"
+    "name": "Berry",
+    "voice_id": "berry",
+    "character_json": "config/characters/berry.json",
+    "created": "2026-07-01T21:43:00"
   },
-  "char_01_girl": {
+  "mango": {
     "tier": "cast",
-    "name": "Maya",
-    "voice_id": "char_01_girl",
-    "character_json": "config/characters/char_01_girl.json",
-    "created": "2026-07-01T19:10:40",
-    "source": "source_sheet.png"
+    "name": "Mango",
+    "voice_id": "mango",
+    "character_json": "config/characters/mango.json",
+    "created": "2026-07-01T21:43:00"
+  },
+  "pinny": {
+    "tier": "cast",
+    "name": "Pinny",
+    "voice_id": "pinny",
+    "character_json": "config/characters/pinny.json",
+    "created": "2026-07-01T21:43:00"
+  },
+  "mellie": {
+    "tier": "cast",
+    "name": "Mellie",
+    "voice_id": "mellie",
+    "character_json": "config/characters/mellie.json",
+    "created": "2026-07-01T21:43:00"
+  },
+  "pappy": {
+    "tier": "cast",
+    "name": "Pappy",
+    "voice_id": "pappy",
+    "character_json": "config/characters/pappy.json",
+    "created": "2026-07-01T21:43:00"
+  },
+  "kiwi": {
+    "tier": "cast",
+    "name": "Kiwi",
+    "voice_id": "kiwi",
+    "character_json": "config/characters/kiwi.json",
+    "created": "2026-07-01T21:43:00"
+  },
+  "coco": {
+    "tier": "cast",
+    "name": "Coco",
+    "voice_id": "coco",
+    "character_json": "config/characters/coco.json",
+    "created": "2026-07-01T21:43:00"
   }
 }

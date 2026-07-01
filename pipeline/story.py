@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import logging
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -13,6 +16,8 @@ from pipeline.common import (
     validate_json_schema,
     write_json,
 )
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -116,40 +121,40 @@ def _preferred_character_order(registry: dict) -> list[str]:
 
 def _poem_lines() -> list[str]:
     return [
-        "Hop along and sing with me, bright as bright can be!",
-        "Little feet go tap, tap, tap, under the sunny tree.",
-        "One small bounce, one happy cheer, everybody smiles today.",
-        "Round and round we wiggle now, in a gentle play.",
-        "Tiny paws and happy hearts make a joyful tune.",
-        "Clap along and spin with us beneath the moon of noon.",
+        "आओ मिलकर गाएं हम, खुशियों से भर जाएं हम!",
+        "प्यारे पैर थिरकते जाएं, पेड़ की ठंडी छांव में।",
+        "एक छोटा सा उछाल, एक प्यारी सी मुस्कान।",
+        "घूम-घूम कर नाचें हम, मिलकर खेलें आज यहां।",
+        "छोटे कदम और प्यारे दिल, सुर से सुर मिलाते जाएं।",
+        "ताली बजाओ संग हमारे, आसमां के तारों तले।",
     ]
 
 
 def _story_lines() -> list[str]:
     return [
-        "Today we learn to share the toys so everyone can play.",
-        "One friend feels a little sad when the blocks get taken away.",
-        "Bibi says, 'We can take turns and make a fair little plan.'",
-        "Then each friend helps the other out, just like a good friend can.",
-        "The puzzle gets completed when everyone lends a hand.",
-        "We clap for kind teamwork now; that is how we understand.",
-        "Next we count the stars together, one, two, three, and four.",
-        "When we work as a happy team, we always find much more.",
-        "Sharing makes the fun grow big and helps our hearts feel bright.",
-        "Let's remember: kind and patient friends make every day feel right.",
+        "आज हम सीखेंगे मिलकर खिलौने बांटना।",
+        "एक दोस्त उदास होता है जब खिलौने छिन जाते हैं।",
+        "अप्पी कहता है, 'हम बारी-बारी से खेलेंगे।'",
+        "हर दोस्त एक-दूसरे की मदद करता है हमेशा।",
+        "सभी मिलकर काम करें तो हर काम आसान होता है।",
+        "चलो ताली बजाएं इस दोस्ती और एकता के लिए।",
+        "चलो मिलकर गिनें तारे, एक, दो, तीन, चार।",
+        "जब हम मिलकर काम करते हैं, खुशियां बढ़ती हैं अपार।",
+        "बांटने से खुशियां बढ़ती हैं, दिल खिल उठते हैं हर बार।",
+        "याद रखें: प्यार और धीरज ही है सच्ची दोस्ती का आधार।",
     ]
 
 
 def _action_for_index(kind: str, index: int) -> str:
     if kind == "poem":
-        return ["bounce_wave", "walk", "point", "idle", "jump", "sleep"][index % 6]
-    return ["idle", "point", "walk", "bounce_wave", "idle", "jump", "walk", "point", "idle", "sleep"][index % 10]
+        return ["bounce_wave", "walk", "point", "dance", "jump", "clap", "laugh", "idle"][index % 8]
+    return ["idle", "point", "walk", "dance", "clap", "bounce_wave", "walk", "point", "laugh", "sleep"][index % 10]
 
 
 def _background_for_index(kind: str, index: int) -> str:
     if kind == "poem":
-        return ["meadow_day", "tree_path", "sunny_hill", "cloud_field"][index % 4]
-    return ["classroom", "playroom", "garden", "rainbow_yard", "storybook_room"][index % 5]
+        return ["meadow_day", "forest_morning", "beach_day", "rainbow_yard", "park_sunny", "garden"][index % 6]
+    return ["classroom", "library", "kitchen", "garden", "rainbow_yard", "forest_morning", "beach_day", "park_sunny", "meadow_day", "bedroom_night"][index % 10]
 
 
 def _broll_prompt(index: int) -> str:
@@ -157,5 +162,187 @@ def _broll_prompt(index: int) -> str:
         "magical flower field blooming in fast motion, soft pastel colors",
         "children's toy blocks stacking themselves into a rainbow tower",
         "sparkling stars drifting over a calm pastel sky",
+        "butterflies dancing over a sunny meadow, gentle breeze",
+        "soft rain falling on a cozy window, warm light inside",
     ]
     return prompts[index % len(prompts)]
+
+
+# ---------------------------------------------------------------------------
+# Ollama / LLM story generation
+# ---------------------------------------------------------------------------
+
+_OLLAMA_SYSTEM = (
+    "You are a children's animation scriptwriter. "
+    "You ONLY respond with valid JSON — no markdown, no extra text."
+)
+
+
+def _ollama_fill_episode(episode: dict, model: str, ollama_url: str) -> dict:
+    """Ask an Ollama model to fill in dialogue lines and make the story coherent."""
+    shots_summary = [
+        {
+            "shot_id": s["shot_id"],
+            "characters": s.get("characters", []),
+            "action": s.get("action", "idle"),
+            "background": s.get("background", ""),
+            "broll": s.get("broll", False),
+        }
+        for s in episode.get("shots", [])
+    ]
+    kind = episode.get("type", "poem")
+    char_names = {
+        cid: load_registry().get(cid, {}).get("name", cid)
+        for cid in episode.get("characters_used", [])
+    }
+    prompt = (
+        f"Create a fun, educational kids' {kind} for a Cocomelon-style cartoon. "
+        f"Characters: {json.dumps(char_names)}. "
+        f"Target duration: {episode.get('target_duration_sec', 150)} seconds. "
+        f"Base template breakdown: {json.dumps(shots_summary)}. "
+        "NOTE ON SHOT COUNT: You can choose to generate exactly as many shots as the story flow needs (e.g., 5 shots, 8 shots, etc.). You do NOT need to match the base template count. Do NOT add empty or placeholder B-roll shots at the end unless they are narratively useful. "
+        "STRICT LANGUAGE REQUIREMENT: All character dialogue lines ('line') MUST be written in simple, beautiful Hindi (using Devanagari script) suitable for children. "
+        "Return a JSON object with exactly these keys: "
+        '"title" (string in English), '
+        '"shots" (array of objects — one per shot, each with "shot_id" (string) and '
+        '"dialogue" (array of {"character": id, "line": text in Hindi}) for non-broll shots, '
+        'or "video_prompt" (string in English) for broll shots). '
+        "Keep each dialogue line under 15 words. Rhyme where possible for poem type. "
+        "Return ONLY the JSON."
+    )
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": _OLLAMA_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "format": "json",
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{ollama_url.rstrip('/')}/api/chat",
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            body = json.loads(resp.read())
+        content = body.get("message", {}).get("content", "")
+        llm_data: dict = json.loads(content)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Ollama call failed (%s). Using static episode.", exc)
+        return episode
+
+    # Merge LLM output into the base episode
+    if isinstance(llm_data.get("title"), str):
+        episode["title"] = llm_data["title"]
+
+    llm_shots_list = llm_data.get("shots", [])
+    if not isinstance(llm_shots_list, list) or not llm_shots_list:
+        log.warning("Ollama returned empty or invalid shots list. Reverting to static.")
+        return episode
+
+    base_shots = episode.get("shots", [])
+    base_by_id = {s.get("shot_id"): s for s in base_shots}
+    
+    new_shots = []
+    registry = load_registry()
+    
+    for idx, llm_shot in enumerate(llm_shots_list):
+        if not isinstance(llm_shot, dict):
+            continue
+        sid = llm_shot.get("shot_id", f"s{idx+1}")
+        
+        # Try to find corresponding base shot
+        base_shot = base_by_id.get(sid)
+        if not base_shot and idx < len(base_shots):
+            base_shot = base_shots[idx]
+            
+        # Create a new shot merging base properties and LLM content
+        shot = {}
+        if base_shot:
+            shot.update(base_shot)
+        else:
+            # Construct a fallback/extra shot dynamically
+            shot = {
+                "shot_id": sid,
+                "characters": [episode["characters_used"][idx % len(episode["characters_used"])]],
+                "action": _action_for_index(episode["type"], idx),
+                "background": _background_for_index(episode["type"], idx),
+                "duration_sec": 25,
+                "broll": False
+            }
+            
+        # Merge dialogue
+        llm_dialogue = llm_shot.get("dialogue", [])
+        if isinstance(llm_dialogue, list) and llm_dialogue:
+            merged: list[dict] = []
+            for item in llm_dialogue:
+                if not isinstance(item, dict):
+                    continue
+                cid = item.get("character", "")
+                if cid not in registry:
+                    cid = (shot.get("characters") or episode["characters_used"])[0]
+                line = str(item.get("line", "")).strip()
+                if line:
+                    merged.append({
+                        "character": cid,
+                        "line": line,
+                        "voice_id": registry[cid]["voice_id"]
+                    })
+            if merged:
+                shot["dialogue"] = merged
+                shot["broll"] = False
+                shot.pop("video_prompt", None)
+            else:
+                # No valid dialogue lines -> make B-roll
+                shot["dialogue"] = []
+                shot["broll"] = True
+                shot["video_prompt"] = llm_shot.get("video_prompt") or "bright pastel children's cartoon background"
+                shot.pop("action", None)
+                shot["characters"] = []
+        else:
+            # No dialogue -> make B-roll
+            shot["dialogue"] = []
+            shot["broll"] = True
+            shot["video_prompt"] = llm_shot.get("video_prompt") or "bright pastel children's cartoon background"
+            shot.pop("action", None)
+            shot["characters"] = []
+            
+        # Enforce shot ID naming structure
+        shot["shot_id"] = f"s{idx+1}"
+        new_shots.append(shot)
+        
+    episode["shots"] = new_shots
+    return episode
+
+
+def build_episode_with_ollama(
+    template: dict,
+    *,
+    episode_id: str | None = None,
+    title: str | None = None,
+    kind: str | None = None,
+    characters: list[str] | None = None,
+    model: str = "gemma3:12b",
+    ollama_url: str = "http://localhost:11434",
+) -> dict:
+    """Build an episode using the LLM for richer dialogue; falls back to static content."""
+    base = build_episode(
+        template=template,
+        episode_id=episode_id,
+        title=title,
+        kind=kind,
+        characters=characters,
+    )
+    filled = _ollama_fill_episode(base, model, ollama_url)
+    # Re-validate after LLM merge
+    try:
+        validate_json_schema("episode", filled)
+    except Exception:  # noqa: BLE001
+        log.warning("LLM output failed schema validation; reverting to static episode.")
+        return base
+    return filled

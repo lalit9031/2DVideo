@@ -21,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--episode", required=True, help="Path to the episode JSON used for the render.")
     parser.add_argument("--input", required=True, help="Path to the final MP4 to validate.")
     parser.add_argument("--output", help="Optional QA report path.")
-    parser.add_argument("--silence-threshold", type=float, default=1.5, help="Max allowed silent gap in seconds.")
+    parser.add_argument("--silence-threshold", type=float, default=5.0, help="Max allowed silent gap in seconds (default: 5.0; B-roll shots have no voice).")
     parser.add_argument("--duration-tolerance", type=float, default=1.0, help="Allowed duration mismatch in seconds.")
     return parser
 
@@ -131,6 +131,7 @@ def _write_silence(path: Path, duration_sec: float, sample_rate: int = 22050) ->
 
 
 def _asset_coverage(episode: dict) -> dict[str, object]:
+    from pipeline.common import CONFIG_DIR, ROOT
     used = list(episode.get("characters_used", []))
     shot_characters = {
         character
@@ -140,7 +141,24 @@ def _asset_coverage(episode: dict) -> dict[str, object]:
     }
     asset_status: dict[str, bool] = {}
     for character_id in used:
-        asset_status[character_id] = character_assets_dir(character_id).exists()
+        # Check if portrait mode
+        char_json = CONFIG_DIR / "characters" / f"{character_id}.json"
+        is_portrait = False
+        if char_json.exists():
+            try:
+                char_data = read_json(char_json)
+                if char_data.get("render_mode") == "portrait":
+                    is_portrait = True
+            except Exception:
+                pass
+        
+        if is_portrait:
+            shared_p = ROOT / "assets" / "shared_character_portraits" / f"{character_id}.png"
+            local_p = character_assets_dir(character_id) / "portrait.png"
+            asset_status[character_id] = shared_p.exists() or local_p.exists()
+        else:
+            asset_status[character_id] = character_assets_dir(character_id).exists()
+            
     return {
         "used": used,
         "appears_in_shots": sorted(shot_characters),

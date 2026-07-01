@@ -50,4 +50,3 @@ def ensure_episode_characters(episode: dict) -> dict:
 def _friendly_name(character_id: str) -> str:
     pretty = slugify(character_id).replace("-", " ").title()
     return pretty
-

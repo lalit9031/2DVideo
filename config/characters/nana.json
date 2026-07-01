@@ -1,0 +1,37 @@
+{
+  "character_id": "nana",
+  "name": "Nana",
+  "voice_id": "nana",
+  "render_mode": "portrait",
+  "mouth_position": [
+    0.5,
+    0.42
+  ],
+  "asset_dir": "config/characters/nana",
+  "rig_parts": [
+    "portrait"
+  ],
+  "anim_cycles": [
+    "idle",
+    "walk",
+    "dance",
+    "jump",
+    "clap",
+    "laugh",
+    "sleep"
+  ],
+  "pivot_points": {
+    "head": [
+      0,
+      0
+    ],
+    "arm_l": [
+      0,
+      0
+    ],
+    "arm_r": [
+      0,
+      0
+    ]
+  }
+}

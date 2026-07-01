@@ -204,6 +204,93 @@ def _wav_duration_sec(path: Path) -> float:
         return 0.0
 
 
+# ---------------------------------------------------------------------------
+# Whisper-based word timing alignment
+# ---------------------------------------------------------------------------
+
+_WHISPER_MODEL: object | None = None
+_WHISPER_FAILED: bool = False
+
+
+def _load_whisper(model_size: str = "base") -> object | None:
+    """Load whisper or whisper_timestamped model (once per process)."""
+    global _WHISPER_MODEL, _WHISPER_FAILED
+    if _WHISPER_FAILED:
+        return None
+    if _WHISPER_MODEL is not None:
+        return _WHISPER_MODEL
+    # Try whisper_timestamped first (gives word-level alignment directly)
+    try:
+        import whisper_timestamped as wt
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _WHISPER_MODEL = ("timestamped", wt.load_model(model_size, device=device))
+        return _WHISPER_MODEL
+    except ImportError:
+        pass
+    # Fall back to standard openai-whisper
+    try:
+        import whisper
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _WHISPER_MODEL = ("standard", whisper.load_model(model_size, device=device))
+        return _WHISPER_MODEL
+    except ImportError:
+        import warnings
+        warnings.warn("Neither whisper_timestamped nor openai-whisper is installed. "
+                      "Using character-proportion timing estimates.")
+        _WHISPER_FAILED = True
+        return None
+
+
+def _whisper_word_timings(audio_path: Path, text: str) -> list[WordTiming] | None:
+    """Return per-word timings from Whisper; returns None on failure."""
+    handle = _load_whisper()
+    if handle is None:
+        return None
+    flavor, model = handle
+    try:
+        if flavor == "timestamped":
+            import whisper_timestamped as wt
+            import json as _json
+            audio = wt.load_audio(str(audio_path))
+            result = wt.transcribe(model, audio, language="en")
+            timings: list[WordTiming] = []
+            for seg in result.get("segments", []):
+                for w in seg.get("words", []):
+                    word = w.get("text", "").strip().strip(".,!?;:'\"")
+                    if word:
+                        timings.append(WordTiming(
+                            word=word,
+                            start_sec=round(float(w.get("start", 0)), 3),
+                            end_sec=round(float(w.get("end", 0)), 3),
+                        ))
+            return timings if timings else None
+
+        else:  # standard whisper — word-level timestamps via word_timestamps=True
+            result = model.transcribe(
+                str(audio_path),
+                language="en",
+                word_timestamps=True,
+                fp16=False,
+            )
+            timings = []
+            for seg in result.get("segments", []):
+                for w in seg.get("words", []):
+                    word = w.get("word", "").strip().strip(".,!?;:'\"")
+                    if word:
+                        timings.append(WordTiming(
+                            word=word,
+                            start_sec=round(float(w.get("start", 0)), 3),
+                            end_sec=round(float(w.get("end", 0)), 3),
+                        ))
+            return timings if timings else None
+    except Exception as exc:
+        import warnings
+        warnings.warn(f"Whisper transcription failed: {exc}")
+        return None
+
+
 def synthesize_voice_clip(
     text: str,
     output_path: Path,
@@ -212,6 +299,7 @@ def synthesize_voice_clip(
     language: str = "en",
     speed: float = 1.0,
     voice_seed: int | None = None,
+    use_whisper: bool = True,
 ) -> list[WordTiming]:
     words = [part for part in text.split() if part]
     if not words:
@@ -222,6 +310,13 @@ def synthesize_voice_clip(
     else:
         _synthesize_fallback_with_seed(text, output_path, speed, voice_seed=voice_seed)
 
+    # ── Try whisper alignment first ──────────────────────────────────────
+    if use_whisper and output_path.exists():
+        whisper_timings = _whisper_word_timings(output_path, text)
+        if whisper_timings:
+            return whisper_timings
+
+    # ── Fallback: character-proportion estimates ──────────────────────────
     total_duration = _wav_duration_sec(output_path)
     if total_duration <= 0:
         total_duration = 0.5 * len(words)
@@ -235,6 +330,7 @@ def synthesize_voice_clip(
         timings.append(WordTiming(word=word, start_sec=round(cursor, 3), end_sec=round(cursor + duration, 3)))
         cursor += duration
     return timings
+
 
 
 def concatenate_wavs(wav_paths: Iterable[Path], output_path: Path) -> None:

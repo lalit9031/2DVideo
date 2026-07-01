@@ -21,6 +21,10 @@
     },
     "generated_from_template": { "type": "string" },
     "created": { "type": "string" },
+    "format": { "type": "string", "enum": ["short", "full"] },
+    "scene_manifest": { "type": "array" },
+    "animated_manifest": { "type": "array" },
+    "upscale_manifest": { "type": "array" },
     "tts_manifest": { "type": "array" },
     "render_manifest": { "type": "array" },
     "broll_manifest": { "type": "array" }
@@ -34,6 +38,7 @@
         "line": { "type": "string" },
         "voice_id": { "type": "string" },
         "audio_path": { "type": "string" },
+        "tts_path": { "type": "string" },
         "timings": { "type": "array" }
       },
       "additionalProperties": false
@@ -56,7 +61,14 @@
         "duration_sec": { "type": "integer", "minimum": 1 },
         "broll": { "type": "boolean" },
         "video_prompt": { "type": "string" },
-        "rendered_video": { "type": "string" }
+        "rendered_video": { "type": "string" },
+        "image_prompt": { "type": "string" },
+        "negative_prompt": { "type": "string" },
+        "scene_image": { "type": "string" },
+        "scene_image_upscaled": { "type": "string" },
+        "animated_clip": { "type": "string" },
+        "broll_render_mode": { "type": "string" },
+        "tts_audio": { "type": "string" }
       },
       "additionalProperties": false
     }

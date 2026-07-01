@@ -1,0 +1,37 @@
+{
+  "character_id": "pappy",
+  "name": "Pappy",
+  "voice_id": "pappy",
+  "render_mode": "portrait",
+  "mouth_position": [
+    0.5,
+    0.48
+  ],
+  "asset_dir": "config/characters/pappy",
+  "rig_parts": [
+    "portrait"
+  ],
+  "anim_cycles": [
+    "idle",
+    "walk",
+    "dance",
+    "jump",
+    "clap",
+    "laugh",
+    "sleep"
+  ],
+  "pivot_points": {
+    "head": [
+      0,
+      0
+    ],
+    "arm_l": [
+      0,
+      0
+    ],
+    "arm_r": [
+      0,
+      0
+    ]
+  }
+}
