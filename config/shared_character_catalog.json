@@ -1,0 +1,112 @@
+[
+  {
+    "character_id": "appy",
+    "name": "Appy",
+    "file_name": "AppyHero",
+    "fruit_type": "Apple",
+    "personality": "Kind, hardworking, loyal",
+    "voice": "Warm gentle young male voice, medium-low pitch, sincere and steady tone, speaks slowly with thoughtful pauses, soft simple Hindi accent, gentle short laugh",
+    "acting": "Grounded, steady, slightly slow; hand over heart or open palm",
+    "image_prompt": "A cute 3D Pixar-style animated apple character, round glossy red-and-green apple body, small green leaf sprouting from the top of the head like hair, expressive warm brown eyes, friendly round face, short stubby arms and legs, wearing a simple brown work vest with rolled-up sleeves, neutral standing reference pose, warm gentle smile, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "nana",
+    "name": "Nana",
+    "file_name": "NanaHero",
+    "fruit_type": "Banana",
+    "personality": "Bright, energetic, ambitious",
+    "voice": "Bright energetic young female voice, medium-high pitch, expressive and fast-paced, playful upbeat Hindi accent, rising intonation when excited, quick bright giggle",
+    "acting": "Quick, bouncy, energetic; claps or spins slightly",
+    "image_prompt": "A cute 3D Pixar-style animated banana character, tall curved bright yellow banana body, small black stem shaped like a ponytail on top of head, large expressive hazel eyes, friendly face, slender arms and legs, wearing a yellow sundress with white polka dots, neutral standing reference pose, bright cheerful smile, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "ozzy",
+    "name": "Ozzy",
+    "file_name": "OzzyHero",
+    "fruit_type": "Orange",
+    "personality": "Confident, cunning, charismatic",
+    "voice": "Smooth cold adult male voice, medium pitch, confident and persuasive tone, polished city-accented Hindi, evenly paced with deliberate emphasis, low controlled chuckle",
+    "acting": "Smooth, controlled, minimal motion; adjusts collar or steeples fingers",
+    "image_prompt": "A cute 3D Pixar-style animated orange character, round textured bright orange citrus body, small green stem leaf on top of head, sharp narrow amber eyes, confident expression, sturdy round build, wearing a sleek dark blazer with open collar, neutral standing reference pose, proud smirk, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "grapey",
+    "name": "Grapey",
+    "file_name": "GrapeyHero",
+    "fruit_type": "Grape",
+    "personality": "Sly, money-driven",
+    "voice": "Sly quick-talking adult male voice, medium-high slightly nasal pitch, fast clipped pacing, street-smart Hindi accent, nervous quick snicker laugh",
+    "acting": "Small, quick, darting movements; rubs hands together or glances sideways",
+    "image_prompt": "A cute 3D Pixar-style animated grape character, small round glossy deep purple grape body, thin green vine curling from top of head, sharp small violet eyes, sly expression, compact build, wearing a pinstripe vest with a small bowtie, neutral standing reference pose, sly smirk, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "berry",
+    "name": "Berry",
+    "file_name": "BerryHero",
+    "fruit_type": "Strawberry",
+    "personality": "Sweet, loving, gentle",
+    "voice": "Sweet tender young female voice, medium-high soft pitch, breathy and slow pacing, gentle melodic Hindi accent, slight trembling warmth during emotional lines, light warm giggle",
+    "acting": "Soft, light, floaty steps; clasps hands near chest",
+    "image_prompt": "A cute 3D Pixar-style animated strawberry character, heart-shaped bright red body with small yellow seed dots, green leafy crown on top of head, large round soft green eyes, gentle expression, wearing a light pink dress with a small ribbon, neutral standing reference pose, warm loving smile, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "mango",
+    "name": "Mango",
+    "file_name": "MangoHero",
+    "fruit_type": "Mango",
+    "personality": "Warm, forgiving, wise",
+    "voice": "Deep warm mature male voice, low pitch, wise and steady tone, slow storyteller pacing, grounded elder-cadence Hindi accent, brief hearty warm laugh",
+    "acting": "Calm, unhurried, deliberate; rests a hand on another's shoulder",
+    "image_prompt": "A cute 3D Pixar-style animated mango character, oval tapered body with yellow-orange skin blushed with red, small green stem tuft on top of head, warm kind dark brown eyes, gentle wise expression, wearing a simple cream kurta-style top, neutral standing reference pose, calm warm smile, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "pinny",
+    "name": "Pinny",
+    "file_name": "PinnyHero",
+    "fruit_type": "Pineapple",
+    "personality": "Patient, determined, humble",
+    "voice": "Humble sincere young male voice, medium slightly rough pitch, restrained even pacing with a slight stammer when nervous, simple rural Hindi accent, rare shy laugh",
+    "acting": "Slightly stiff but determined; wipes brow or clenches fist",
+    "image_prompt": "A cute 3D Pixar-style animated pineapple character, cylindrical golden-brown body with criss-cross textured skin, spiky green leaf crown on top of head, round soft amber eyes, humble determined expression, wearing simple beige overalls, neutral standing reference pose, patient warm smile, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "mellie",
+    "name": "Mellie",
+    "file_name": "MellieHero",
+    "fruit_type": "Watermelon",
+    "personality": "Loving, self-sacrificing",
+    "voice": "Tender nurturing young female voice, medium soft pitch, slow gentle pacing, calm caring Hindi accent, stays composed and gentle even in sadness, soft warm hum-laugh",
+    "acting": "Slow, nurturing, protective; wraps arms around another character",
+    "image_prompt": "A cute 3D Pixar-style animated watermelon character, large round green striped body with soft pink blush cheeks, small curly green vine on top of head, large soft pink-brown eyes, tender loving expression, wearing a green-and-pink layered dress, neutral standing reference pose, soft caring smile, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "pappy",
+    "name": "Pappy",
+    "file_name": "PappyHero",
+    "fruit_type": "Papaya",
+    "personality": "Supportive, nurturing, elder-like",
+    "voice": "Warm nurturing mature voice, medium-low comforting pitch, slow steady pacing, warm elder Hindi accent, full-bodied warm chuckle",
+    "acting": "Slow, steady, grounded; pats shoulder reassuringly",
+    "image_prompt": "A cute 3D Pixar-style animated papaya character, oval elongated body with orange-green blended skin, small green stem cluster on top of head, round soft hazel eyes, nurturing warm expression, wearing an earth-toned shawl wrap, neutral standing reference pose, gentle supportive smile, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "kiwi",
+    "name": "Kiwi",
+    "file_name": "KiwiHero",
+    "fruit_type": "Kiwi",
+    "personality": "Insecure, jealous, redeemable",
+    "voice": "Anxious hesitant young voice, medium-high uneven pitch, slow nervous pacing that speeds up when flustered, soft uncertain Hindi accent at quiet volume, nervous short laugh",
+    "acting": "Small, hesitant, shrinking; looks down before speaking",
+    "image_prompt": "A cute 3D Pixar-style animated kiwi character, small round body with fuzzy brown exterior and bright green textured inner tone, tiny tuft of brown fuzz on top of head, small round dark eyes, nervous expressive face, wearing a simple striped shirt, neutral standing reference pose, uneasy expression, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  },
+  {
+    "character_id": "coco",
+    "name": "Coco",
+    "file_name": "CocoHero",
+    "fruit_type": "Coconut",
+    "personality": "Wealthy, cold, reserved",
+    "voice": "Cold composed adult voice, medium-low flat pitch, clipped unhurried pacing, polished formal Hindi accent with minimal warmth, rarely laughs beyond a dry exhale",
+    "acting": "Rigid, composed, minimal motion; straightens cuffs or turns slowly",
+    "image_prompt": "A cute 3D Pixar-style animated coconut character, round sturdy body with brown fibrous husk texture, coarse brown fiber tuft on top of head resembling hair, sharp narrow dark eyes, cold reserved expression, wearing a tailored white linen suit, neutral standing reference pose, composed smirk, soft studio lighting, pure white background, full body visible, character design reference sheet style, high detail"
+  }
+]

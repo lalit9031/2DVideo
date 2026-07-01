@@ -33,36 +33,154 @@ def has_pyav() -> bool:
     return av is not None
 
 
-def synthesize_voice_clip(
+# ---------------------------------------------------------------------------
+# XTTS-v2 integration helpers
+# ---------------------------------------------------------------------------
+
+_TTS_MODEL: object | None = None
+
+
+def _load_tts_model() -> object | None:
+    global _TTS_MODEL
+    if _TTS_MODEL is not None:
+        return _TTS_MODEL
+    # Auto-accept the CPML non-commercial license for unattended operation.
+    import os
+    os.environ.setdefault("COQUI_TOS_AGREED", "1")
+    try:
+        from TTS.api import TTS
+
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _TTS_MODEL = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+        return _TTS_MODEL
+    except Exception as exc:
+        import warnings
+        warnings.warn(f"XTTS-v2 model could not be loaded: {exc}. Will use fallback sine-wave TTS.")
+        return None
+
+
+def _chunk_text(text: str, max_chars: int = 250) -> list[str]:
+    """Split text into chunks of at most max_chars, preferring sentence boundaries."""
+    import re
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    chunks: list[str] = []
+    current = ""
+    for sent in sentences:
+        if not sent:
+            continue
+        candidate = (current + " " + sent).strip() if current else sent
+        if len(candidate) <= max_chars:
+            current = candidate
+        else:
+            if current:
+                chunks.append(current)
+            if len(sent) <= max_chars:
+                current = sent
+            else:
+                words = sent.split()
+                current = ""
+                for w in words:
+                    if len(current) + len(w) + 1 > max_chars:
+                        if current:
+                            chunks.append(current)
+                        current = w
+                    else:
+                        current = (current + " " + w).strip()
+    if current:
+        chunks.append(current)
+    return chunks or [text[:max_chars]]
+
+
+def _synthesize_with_xtts(
     text: str,
     output_path: Path,
-    *,
-    base_frequency: float,
-    pitch_shift: float = 0.0,
+    reference_clip_path: Path | str,
+    language: str = "en",
     speed: float = 1.0,
-) -> list[WordTiming]:
+) -> None:
+    """Synthesize speech using XTTS-v2, chunking long text."""
+    model = _load_tts_model()
+    if model is None:
+        _synthesize_fallback(text, output_path, speed)
+        return
+
+    import tempfile
+
+    chunks = _chunk_text(text)
+    audio_chunks: list[bytes] = []
+
+    for chunk in chunks:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            # XTTS-v2 does not accept a speed parameter; ignore speed for XTTS.
+            model.tts_to_file(
+                text=chunk,
+                speaker_wav=str(reference_clip_path),
+                language=language,
+                file_path=tmp_path,
+            )
+            with wave.open(tmp_path, "rb") as fh:
+                audio_chunks.append(fh.readframes(fh.getnframes()))
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    if not audio_chunks:
+        _synthesize_fallback(text, output_path, speed)
+        return
+
+    # Concatenate all chunk frames, resampling to the project's standard SAMPLE_RATE.
+    raw = b"".join(audio_chunks)
+    pcm = np.frombuffer(raw, dtype=np.int16)
+
+    # XTTS-v2 outputs at 24000 Hz; resample to the project-wide SAMPLE_RATE (22050).
+    target_samples = int(round(len(pcm) * SAMPLE_RATE / 24000))
+    if target_samples != len(pcm):
+        x = np.linspace(0, 1, max(1, len(pcm)))
+        x_new = np.linspace(0, 1, max(1, target_samples))
+        pcm = np.interp(x_new, x, pcm.astype(np.float32)).astype(np.int16)
+
+    ensure_dir(output_path.parent)
+    with wave.open(str(output_path), "wb") as fh:
+        fh.setnchannels(1)
+        fh.setsampwidth(2)
+        fh.setframerate(SAMPLE_RATE)
+        fh.writeframes(pcm.tobytes())
+
+
+def _synthesize_fallback(text: str, output_path: Path, speed: float = 1.0) -> None:
+    """Fallback sine-wave TTS when XTTS is unavailable."""
+    _synthesize_fallback_with_seed(text, output_path, speed, voice_seed=None)
+
+
+def _synthesize_fallback_with_seed(
+    text: str,
+    output_path: Path,
+    speed: float = 1.0,
+    voice_seed: int | None = None,
+) -> None:
+    """Fallback sine-wave TTS with a seedable tone profile."""
     words = [part for part in text.split() if part]
     if not words:
         words = ["..."]
     unit = max(0.18 / max(speed, 0.1), 0.06)
-    timings: list[WordTiming] = []
     samples: list[np.ndarray] = []
-    cursor = 0.0
+    seed = abs(int(voice_seed or 0))
+    base_freq = 168.0 + (seed % 11) * 17.0
+    harmonic_ratio = 1.35 + (seed % 7) * 0.05
+    breath_gap = 0.012 + (seed % 5) * 0.003
     for index, word in enumerate(words):
         duration = max(unit + 0.01 * len(word), 0.09)
         duration /= max(speed, 0.1)
-        start = cursor
-        end = cursor + duration
-        timings.append(WordTiming(word=word, start_sec=start, end_sec=end))
-        cursor = end
-        word_freq = base_frequency + (index % 5) * 35 + pitch_shift * 8.0
+        freq = base_freq + (index % 5) * (24 + (seed % 3) * 3)
         t = np.linspace(0, duration, int(SAMPLE_RATE * duration), endpoint=False)
         envelope = np.sin(np.linspace(0, math.pi, len(t))) ** 1.4
         tone = (
-            0.28 * np.sin(2 * math.pi * word_freq * t)
-            + 0.14 * np.sin(2 * math.pi * (word_freq * 1.5) * t)
+            0.28 * np.sin(2 * math.pi * freq * t)
+            + 0.14 * np.sin(2 * math.pi * (freq * harmonic_ratio) * t)
         )
-        pause = np.zeros(int(SAMPLE_RATE * 0.02), dtype=np.float32)
+        pause = np.zeros(int(SAMPLE_RATE * breath_gap), dtype=np.float32)
         samples.append((tone * envelope).astype(np.float32))
         samples.append(pause)
     waveform = np.concatenate(samples) if samples else np.zeros(1, dtype=np.float32)
@@ -74,6 +192,48 @@ def synthesize_voice_clip(
         fh.setsampwidth(2)
         fh.setframerate(SAMPLE_RATE)
         fh.writeframes(pcm.tobytes())
+
+
+def _wav_duration_sec(path: Path) -> float:
+    try:
+        with wave.open(str(path), "rb") as fh:
+            frames = fh.getnframes()
+            rate = fh.getframerate()
+            return frames / max(rate, 1)
+    except Exception:
+        return 0.0
+
+
+def synthesize_voice_clip(
+    text: str,
+    output_path: Path,
+    *,
+    reference_clip_path: Path | str | None = None,
+    language: str = "en",
+    speed: float = 1.0,
+    voice_seed: int | None = None,
+) -> list[WordTiming]:
+    words = [part for part in text.split() if part]
+    if not words:
+        words = ["..."]
+
+    if reference_clip_path is not None and Path(str(reference_clip_path)).exists():
+        _synthesize_with_xtts(text, output_path, reference_clip_path, language, speed)
+    else:
+        _synthesize_fallback_with_seed(text, output_path, speed, voice_seed=voice_seed)
+
+    total_duration = _wav_duration_sec(output_path)
+    if total_duration <= 0:
+        total_duration = 0.5 * len(words)
+
+    char_total = sum(len(w) for w in words)
+    timings: list[WordTiming] = []
+    cursor = 0.0
+    for word in words:
+        char_weight = max(len(word), 1) / max(char_total, 1)
+        duration = total_duration * char_weight
+        timings.append(WordTiming(word=word, start_sec=round(cursor, 3), end_sec=round(cursor + duration, 3)))
+        cursor += duration
     return timings
 
 

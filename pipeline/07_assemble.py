@@ -24,10 +24,12 @@ def main() -> None:
     episode_path = Path(args.episode)
     episode = read_json(episode_path)
     progress_file = progress_path_from_env()
-    write_stage_progress(progress_file, fraction=0.25, stage="assemble", message="Assembling video")
+    write_stage_progress(progress_file, fraction=0.1, stage="assemble", message="Preparing audio mix")
     report = assemble_episode_video(episode, episode_path.parent, Path(args.output))
-    write_stage_progress(progress_file, fraction=1.0, stage="assemble", message="Assembly complete")
+    audio_state = report.get("audio_mix_status", "unknown")
+    write_stage_progress(progress_file, fraction=0.7, stage="assemble", message=f"Mixing audio ({audio_state})")
     write_json(Path(args.output).with_suffix(".manifest.json"), report)
+    write_stage_progress(progress_file, fraction=1.0, stage="assemble", message="Assembly complete")
     print(args.output)
 
 

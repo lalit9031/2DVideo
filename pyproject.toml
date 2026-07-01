@@ -13,6 +13,7 @@ dependencies = [
   "numpy>=1.26",
   "Pillow>=10.0",
   "opencv-python>=4.9",
+  "coqui-tts>=0.27",
 ]
 
 [tool.setuptools]

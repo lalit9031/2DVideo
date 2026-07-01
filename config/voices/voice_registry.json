@@ -34,5 +34,93 @@
     "language": "en",
     "pitch_shift": 0,
     "speed": 1.0
+  },
+  "appy": {
+    "reference_clip": "config/voices/appy_ref.wav",
+    "sample_clip": "config/voices/appy_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.08,
+    "created": "2026-07-01T19:01:56"
+  },
+  "nana": {
+    "reference_clip": "config/voices/nana_ref.wav",
+    "sample_clip": "config/voices/nana_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.0,
+    "created": "2026-07-01T19:02:11"
+  },
+  "ozzy": {
+    "reference_clip": "config/voices/ozzy_ref.wav",
+    "sample_clip": "config/voices/ozzy_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 0.92,
+    "created": "2026-07-01T19:02:17"
+  },
+  "grapey": {
+    "reference_clip": "config/voices/grapey_ref.wav",
+    "sample_clip": "config/voices/grapey_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.16,
+    "created": "2026-07-01T19:02:28"
+  },
+  "berry": {
+    "reference_clip": "config/voices/berry_ref.wav",
+    "sample_clip": "config/voices/berry_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.0,
+    "created": "2026-07-01T19:02:35"
+  },
+  "mango": {
+    "reference_clip": "config/voices/mango_ref.wav",
+    "sample_clip": "config/voices/mango_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.08,
+    "created": "2026-07-01T19:02:47"
+  },
+  "pinny": {
+    "reference_clip": "config/voices/pinny_ref.wav",
+    "sample_clip": "config/voices/pinny_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.08,
+    "created": "2026-07-01T19:02:53"
+  },
+  "mellie": {
+    "reference_clip": "config/voices/mellie_ref.wav",
+    "sample_clip": "config/voices/mellie_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.08,
+    "created": "2026-07-01T19:03:03"
+  },
+  "pappy": {
+    "reference_clip": "config/voices/pappy_ref.wav",
+    "sample_clip": "config/voices/pappy_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 0.92,
+    "created": "2026-07-01T19:03:11"
+  },
+  "kiwi": {
+    "reference_clip": "config/voices/kiwi_ref.wav",
+    "sample_clip": "config/voices/kiwi_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 0.92,
+    "created": "2026-07-01T19:03:20"
+  },
+  "coco": {
+    "reference_clip": "config/voices/coco_ref.wav",
+    "sample_clip": "config/voices/coco_sample.wav",
+    "language": "en",
+    "pitch_shift": 0,
+    "speed": 1.16,
+    "created": "2026-07-01T19:03:27"
   }
 }

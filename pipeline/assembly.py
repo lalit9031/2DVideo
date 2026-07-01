@@ -5,21 +5,34 @@ from pathlib import Path
 import numpy as np
 import wave
 
-from pipeline.common import ensure_dir, read_json, write_json
+from pipeline.common import ensure_dir, write_json
 from pipeline.media import SAMPLE_RATE, export_video, extract_audio_to_wav, read_video_frames, upscale_frames, write_video_with_audio
 
 
-def _collect_audio_paths(episode: dict, episode_root: Path) -> list[Path]:
-    paths: list[Path] = []
+def _collect_audio_items(episode: dict, episode_root: Path) -> list[dict]:
+    items: list[dict] = []
     for shot in episode.get("shots", []):
-        for line in shot.get("dialogue", []):
+        for line_index, line in enumerate(shot.get("dialogue", []), start=1):
             audio_path = line.get("audio_path")
+            resolved: Path | None = None
+            exists = False
             if audio_path:
                 path = Path(audio_path)
                 if not path.is_absolute():
                     path = episode_root / audio_path
-                paths.append(path)
-    return paths
+                resolved = path
+                exists = path.exists()
+            items.append(
+                {
+                    "shot_id": shot.get("shot_id", ""),
+                    "line_index": line_index,
+                    "character": line.get("character", ""),
+                    "audio_path": audio_path or "",
+                    "resolved_audio_path": str(resolved) if resolved else "",
+                    "exists": exists,
+                }
+            )
+    return items
 
 
 def _read_wav_samples(path: Path) -> tuple[np.ndarray, int]:
@@ -114,6 +127,8 @@ def assemble_episode_video(
         raise ValueError("No rendered frames were found for assembly.")
     ensure_dir(output_path.parent)
     final_audio = output_path.with_suffix(".wav")
+    audio_items = _collect_audio_items(episode, episode_root)
+    missing_audio = [item for item in audio_items if item["audio_path"] and not item["exists"]]
     _build_episode_audio(episode, episode_root, float(episode.get("target_duration_sec", len(frames) / (fps or 24.0))), final_audio)
     write_video_with_audio(frames, final_audio, output_path, fps or 24.0)
     return {
@@ -123,6 +138,9 @@ def assemble_episode_video(
         "frame_count": len(frames),
         "fps": fps or 24.0,
         "upscaled": upscaled,
+        "audio_items": audio_items,
+        "audio_missing_count": len(missing_audio),
+        "audio_mix_status": "missing" if not audio_items else ("partial" if missing_audio else "ready"),
     }
 
 
