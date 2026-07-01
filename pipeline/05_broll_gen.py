@@ -32,6 +32,7 @@ def main() -> None:
         shot_path = broll_dir / f"{shot['shot_id']}.mp4"
         result = render_broll(shot, shot_path)
         shot["rendered_video"] = str(shot_path)
+        shot["broll_render_mode"] = "scenic_fallback"
         manifests.append(
             {
                 "shot_id": result.shot_id,

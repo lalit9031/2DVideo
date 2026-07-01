@@ -10,9 +10,10 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from pipeline.common import character_assets_dir, load_registry, read_json
+from pipeline.backgrounds import generate_background, background_path
 
 
-FPS = 12.0
+FPS = 24.0
 
 
 @dataclass(frozen=True)
@@ -24,7 +25,11 @@ class ShotRenderResult:
 
 
 def _load_part(character_id: str, part: str) -> Image.Image:
-    return Image.open(character_assets_dir(character_id) / f"{part}.png").convert("RGBA")
+    path = character_assets_dir(character_id) / f"{part}.png"
+    print(f"[rig-load] {character_id}:{part} -> {path}", flush=True)
+    if not path.exists():
+        raise FileNotFoundError(f"Missing character part: {path}")
+    return Image.open(path).convert("RGBA")
 
 
 def _load_character(character_id: str) -> dict:
@@ -41,25 +46,17 @@ def _load_character(character_id: str) -> dict:
 
 
 def _background(size: tuple[int, int], background: str, time_factor: float) -> Image.Image:
+    scene_id = background or "meadow_day"
+    path = generate_background(scene_id, size)
+    img = Image.open(path).convert("RGBA")
     width, height = size
-    img = Image.new("RGBA", size, (0, 0, 0, 255))
-    draw = ImageDraw.Draw(img)
-    top = (180, 220, 255)
-    bottom = (245, 250, 255)
-    if "meadow" in background or "garden" in background:
-        top, bottom = (185, 240, 192), (245, 252, 234)
-    elif "classroom" in background or "room" in background:
-        top, bottom = (253, 235, 208), (255, 248, 239)
-    elif "rainbow" in background:
-        top, bottom = (219, 218, 255), (250, 235, 255)
-    for y in range(height):
-        t = y / max(height - 1, 1)
-        color = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3))
-        draw.line((0, y, width, y), fill=color + (255,))
-    accent_x = int((width * 0.5) + math.sin(time_factor) * width * 0.06)
-    draw.ellipse((accent_x - 90, 50, accent_x + 90, 230), fill=(255, 255, 255, 80))
-    draw.ellipse((accent_x + 120, 68, accent_x + 190, 138), fill=(255, 255, 255, 60))
-    return img
+    scale = 1.03 + 0.02 * math.sin(time_factor * 0.6)
+    pan = int(math.sin(time_factor * 0.3) * 30)
+    zoom_w = int(width / scale)
+    zoom_h = int(height / scale)
+    left = max(0, min(img.width - zoom_w, (img.width - zoom_w) // 2 + pan))
+    top = max(0, min(img.height - zoom_h, (img.height - zoom_h) // 2))
+    return img.crop((left, top, left + zoom_w, top + zoom_h)).resize(size, Image.Resampling.LANCZOS)
 
 
 def _mouth_for_time(t: float, timings: Sequence[dict]) -> str:
@@ -170,10 +167,17 @@ def render_shot(
                     action=char_action,
                 )
         else:
-            prompt = shot.get("video_prompt", "broll")
             draw = ImageDraw.Draw(canvas)
-            draw.rounded_rectangle((120, 120, width - 120, height - 120), radius=50, fill=(255, 255, 255, 65), outline=(255, 255, 255, 140), width=4)
-            draw.text((170, 160), prompt[:120], fill=(50, 50, 50, 255))
+            for idx in range(6):
+                offset = int(math.sin(time_sec * 1.8 + idx) * 12)
+                x = 120 + idx * 180 + offset
+                y = int(height * 0.55 + math.cos(time_sec * 1.4 + idx) * 28)
+                draw.ellipse((x, y, x + 64, y + 64), fill=(255, 255, 255, 110), outline=(255, 220, 170, 180), width=4)
+            if "flower" in shot.get("video_prompt", "").lower():
+                for idx in range(7):
+                    x = 90 + idx * 160 + int(math.sin(time_sec * 2.0 + idx) * 18)
+                    y = int(height * 0.72 + math.cos(time_sec * 1.7 + idx) * 12)
+                    draw.ellipse((x, y, x + 26, y + 26), fill=(255, 146, 182, 220))
         frames.append(np.array(canvas.convert("RGB")))
     from pipeline.media import export_video
 
@@ -192,21 +196,27 @@ def render_broll(
     duration = float(shot.get("duration_sec", 4))
     frame_count = max(1, int(round(duration * fps)))
     frames: list[np.ndarray] = []
-    prompt = shot.get("video_prompt", "broll")
+    prompt = shot.get("video_prompt", "broll").lower()
     for index in range(frame_count):
         t = index / fps
-        canvas = _background((width, height), "rainbow", t)
+        scene = "park_sunny"
+        if "night" in prompt or "moon" in prompt:
+            scene = "bedroom_night"
+        elif "classroom" in prompt or "school" in prompt:
+            scene = "classroom"
+        elif "flower" in prompt or "garden" in prompt:
+            scene = "garden"
+        canvas = _background((width, height), scene, t)
         draw = ImageDraw.Draw(canvas)
-        cx = int(width * 0.5 + math.sin(t * 2.0) * 90)
-        cy = int(height * 0.5 + math.cos(t * 1.7) * 40)
-        radius = int(130 + 25 * math.sin(t * 3.0))
-        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=(255, 255, 255, 95), outline=(255, 220, 255, 180), width=5)
-        draw.text((110, 110), prompt, fill=(50, 50, 50, 255))
-        for i in range(7):
-            hue = (i * 40 + index * 5) % 255
-            x = int(120 + i * 150 + math.sin(t * 3 + i) * 18)
-            y = int(520 + math.cos(t * 2 + i) * 20)
-            draw.rounded_rectangle((x, y, x + 88, y + 88), radius=18, fill=(255, 200 - hue // 2, 150 + hue // 3, 210))
+        cx = int(width * 0.5 + math.sin(t * 1.6) * 120)
+        cy = int(height * 0.48 + math.cos(t * 1.3) * 44)
+        radius = int(120 + 18 * math.sin(t * 2.6))
+        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=(255, 255, 255, 82), outline=(255, 225, 168, 160), width=4)
+        for i in range(8):
+            hue = (i * 35 + index * 3) % 255
+            x = int(100 + i * 140 + math.sin(t * 2 + i) * 22)
+            y = int(520 + math.cos(t * 1.8 + i) * 14)
+            draw.ellipse((x, y, x + 46, y + 46), fill=(255, 190 - hue // 3, 140 + hue // 4, 200))
         frames.append(np.array(canvas.convert("RGB")))
     from pipeline.media import export_video
 

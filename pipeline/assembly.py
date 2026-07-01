@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np
 
 from pipeline.common import ensure_dir, read_json, write_json
-from pipeline.media import SAMPLE_RATE, concatenate_wavs, export_video, read_video_frames, upscale_frames
+from pipeline.media import SAMPLE_RATE, concatenate_wavs, export_video, extract_audio_to_wav, read_video_frames, upscale_frames, write_video_with_audio
 import wave
 
 
@@ -48,7 +47,6 @@ def assemble_episode_video(
     if not frames:
         raise ValueError("No rendered frames were found for assembly.")
     ensure_dir(output_path.parent)
-    export_video(frames, output_path, fps or 12.0)
     audio_paths = _collect_audio_paths(episode, episode_root)
     final_audio = output_path.with_suffix(".wav")
     if audio_paths:
@@ -60,12 +58,13 @@ def assemble_episode_video(
             fh.setsampwidth(2)
             fh.setframerate(SAMPLE_RATE)
             fh.writeframes(np.zeros(SAMPLE_RATE // 2, dtype=np.int16).tobytes())
+    write_video_with_audio(frames, final_audio, output_path, fps or 24.0)
     return {
         "final_video": str(output_path),
         "final_audio": str(final_audio),
         "shot_count": len(shot_paths),
         "frame_count": len(frames),
-        "fps": fps or 12.0,
+        "fps": fps or 24.0,
         "upscaled": upscaled,
     }
 
@@ -73,5 +72,12 @@ def assemble_episode_video(
 def upscale_video_file(input_path: Path, output_path: Path, factor: float = 2.0) -> dict:
     frames, fps = read_video_frames(input_path)
     upscaled = upscale_frames(frames, factor)
-    export_video(upscaled, output_path, fps)
-    return {"input": str(input_path), "output": str(output_path), "factor": factor, "fps": fps}
+    temp_audio = output_path.with_suffix(".wav")
+    extract_audio_to_wav(input_path, temp_audio)
+    write_video_with_audio(upscaled, temp_audio if temp_audio.exists() else None, output_path, fps or 24.0)
+    try:
+        if temp_audio.exists():
+            temp_audio.unlink()
+    except Exception:
+        pass
+    return {"input": str(input_path), "output": str(output_path), "factor": factor, "fps": fps or 24.0}
