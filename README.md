@@ -22,9 +22,33 @@ pipeline/
 ui/
 schemas/
 assets/
+prompt_bibles/
+tools/
 output/
 logs/
 ```
+
+## Prompt Bibles
+
+The locked fruit-channel reference material lives in `prompt_bibles/`:
+
+- `Fruit_Character_Bible.md`
+- `Fruit_Character_Acting_Guide.md`
+- `Fruit_Character_Voice_Bible.md`
+- `Fruit_Environment_Bible.md`
+- `Character_Naming_Convention.md`
+- `Local_Prompt_Generator_System_Prompt.md`
+
+Use the local prompt generator for Phase 3-6 prompts:
+
+```bash
+python3 tools/prompt_generator.py character Appy
+python3 tools/prompt_generator.py environment VillageHomeExterior
+python3 tools/prompt_generator.py scene --characters Appy,Ozzy --environment VillageHomeExterior --shot "close-up" --moment "Appy realizes Ozzy lied"
+python3 tools/prompt_generator.py video --characters Appy,Ozzy --environment VillageHomeExterior --speaker1 Appy --line1 "Tumne mujhse jhoot kyun bola?" --emotion1 "hurt, quietly betrayed" --bgm "Betrayal reveal" --mood heartbreaking
+```
+
+By default, every command assembles from the locked bible text directly. Add `--use-ollama` to `scene` or `video` when you want local model judgment; override the model/API with `OLLAMA_MODEL` or `OLLAMA_URL` when needed.
 
 ## UI
 
@@ -41,6 +65,7 @@ Then open `http://127.0.0.1:8000` to:
 - import a character sheet
 - inspect registries and generated outputs
 - review finished episodes
+- generate locked character, environment, scene, and video prompts from `/prompts`
 
 ### Review finished output
 

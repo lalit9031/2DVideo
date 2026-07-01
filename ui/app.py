@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import subprocess
 import sys
 import mimetypes
@@ -214,6 +215,77 @@ def _shared_character_catalog() -> list[dict[str, Any]]:
     path = ROOT / "config" / "shared_character_catalog.json"
     data = _read_json(path)
     return data if isinstance(data, list) else []
+
+
+def _prompt_environment_names() -> list[str]:
+    path = ROOT / "prompt_bibles" / "Fruit_Environment_Bible.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return []
+    names = []
+    for match in re.finditer(r"\|\s*File name\s*\|\s*([^|\n]+)\s*\|", text):
+        name = match.group(1).strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _run_prompt_generator(params: dict[str, str]) -> str:
+    mode = params.get("mode", "character")
+    command = [sys.executable, str(ROOT / "tools" / "prompt_generator.py")]
+    if params.get("use_ollama") == "yes" and mode in {"scene", "video"}:
+        command.append("--use-ollama")
+    command.append(mode)
+    if mode in {"character", "environment"}:
+        command.append(params.get("name", ""))
+    elif mode == "scene":
+        command += [
+            "--characters",
+            params.get("characters", ""),
+            "--environment",
+            params.get("environment", ""),
+            "--shot",
+            params.get("shot", "medium"),
+            "--moment",
+            params.get("moment", ""),
+        ]
+    elif mode == "video":
+        command += [
+            "--characters",
+            params.get("characters", ""),
+            "--environment",
+            params.get("environment", ""),
+            "--speaker1",
+            params.get("speaker1", ""),
+            "--line1",
+            params.get("line1", ""),
+            "--emotion1",
+            params.get("emotion1", ""),
+            "--bgm",
+            params.get("bgm", ""),
+            "--mood",
+            params.get("mood", ""),
+            "--ambient",
+            params.get("ambient", "subtle village ambience"),
+            "--camera",
+            params.get("camera", "gentle cinematic camera move"),
+        ]
+        if params.get("speaker2"):
+            command += [
+                "--speaker2",
+                params.get("speaker2", ""),
+                "--line2",
+                params.get("line2", ""),
+                "--emotion2",
+                params.get("emotion2", ""),
+            ]
+    else:
+        raise ValueError(f"Unknown prompt mode: {mode}")
+    proc = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=300)
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "Prompt generation failed.").strip())
+    return proc.stdout.strip()
 
 
 def _episode_meta_path(episode_dir: Path) -> Path:
@@ -715,6 +787,158 @@ def _render_character_library_page() -> str:
       document.getElementById('characterCount').textContent = visible + ' characters';
     }}
   </script>
+</body>
+</html>"""
+
+
+def _render_prompt_generator_page(query: dict[str, list[str]]) -> str:
+    shared = _shared_character_catalog()
+    character_names = [str(entry.get("name", "")) for entry in shared if entry.get("name")]
+    environment_names = _prompt_environment_names()
+    params = {key: values[0] for key, values in query.items() if values}
+    mode = params.get("mode", "character")
+    if "name" not in params:
+        params["name"] = character_names[0] if mode == "character" and character_names else (environment_names[0] if environment_names else "")
+    if "characters" not in params:
+        params["characters"] = ",".join(character_names[:2]) if len(character_names) >= 2 else ",".join(character_names)
+    if "environment" not in params:
+        params["environment"] = environment_names[0] if environment_names else ""
+    output = ""
+    error = ""
+    if params.get("generate") == "yes":
+        try:
+            output = _run_prompt_generator(params)
+        except Exception as exc:
+            error = str(exc)
+
+    def esc(value: Any) -> str:
+        return html.escape("" if value is None else str(value))
+
+    def options(values: list[str], selected: str) -> str:
+        return "".join(f'<option value="{esc(value)}"{" selected" if value == selected else ""}>{esc(value)}</option>' for value in values)
+
+    character_options = options(character_names, params.get("name", ""))
+    speaker_options = options(character_names, params.get("speaker1", character_names[0] if character_names else ""))
+    speaker2_options = '<option value="">None</option>' + options(character_names, params.get("speaker2", ""))
+    environment_options = options(environment_names, params.get("environment", ""))
+    use_ollama_checked = " checked" if params.get("use_ollama") == "yes" else ""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prompt Generator</title>
+  <style>
+    body {{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#f6f8f3; color:#172033; }}
+    .wrap {{ max-width: 1280px; margin: 0 auto; padding: 26px 18px 60px; }}
+    .topbar {{ display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:18px; }}
+    .topbar nav {{ display:flex; gap:8px; flex-wrap:wrap; }}
+    a, button {{ border:0; border-radius:8px; padding:10px 12px; background:#0f766e; color:white; text-decoration:none; font-weight:800; cursor:pointer; }}
+    h1 {{ margin:0; font-size:2rem; }}
+    p {{ color:#5b6472; }}
+    .layout {{ display:grid; grid-template-columns: 390px minmax(0,1fr); gap:18px; align-items:start; }}
+    form {{ display:grid; gap:12px; background:white; border:1px solid rgba(23,32,51,.12); border-radius:8px; padding:16px; box-shadow:0 12px 30px rgba(23,32,51,.08); }}
+    label {{ display:grid; gap:6px; font-size:.9rem; font-weight:800; }}
+    input, select, textarea {{ border:1px solid rgba(23,32,51,.16); border-radius:8px; padding:10px 11px; font:inherit; }}
+    textarea {{ min-height:84px; resize:vertical; }}
+    .inline {{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }}
+    .check {{ display:flex; align-items:center; gap:8px; font-weight:800; }}
+    .check input {{ width:auto; }}
+    .panel {{ background:white; border:1px solid rgba(23,32,51,.12); border-radius:8px; padding:16px; box-shadow:0 12px 30px rgba(23,32,51,.08); }}
+    pre {{ white-space:pre-wrap; word-break:break-word; background:#101827; color:#eff6ff; border-radius:8px; padding:16px; min-height:320px; margin:0; line-height:1.55; }}
+    .error {{ background:#fee2e2; color:#991b1b; border-radius:8px; padding:12px; font-weight:700; }}
+    @media (max-width: 900px) {{ .layout, .inline {{ grid-template-columns:1fr; }} .topbar {{ align-items:flex-start; flex-direction:column; }} }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>Prompt Generator</h1>
+        <p>Generate locked prompts from the fruit bibles. Ollama is optional.</p>
+      </div>
+      <nav><a href="/">Dashboard</a><a href="/characters">Characters</a><a href="/stories">Stories</a></nav>
+    </div>
+    <div class="layout">
+      <form method="get" action="/prompts">
+        <input type="hidden" name="generate" value="yes" />
+        <label>Mode
+          <select name="mode" onchange="this.form.submit()">
+            <option value="character"{" selected" if mode == "character" else ""}>Character</option>
+            <option value="environment"{" selected" if mode == "environment" else ""}>Environment</option>
+            <option value="scene"{" selected" if mode == "scene" else ""}>Scene</option>
+            <option value="video"{" selected" if mode == "video" else ""}>Video</option>
+          </select>
+        </label>
+        {f'''<label>Character
+          <select name="name">{character_options}</select>
+        </label>''' if mode == "character" else ""}
+        {f'''<label>Environment
+          <select name="name">{environment_options}</select>
+        </label>''' if mode == "environment" else ""}
+        {f'''<label>Characters
+          <input name="characters" value="{esc(params.get("characters", ""))}" />
+        </label>
+        <label>Environment
+          <select name="environment">{environment_options}</select>
+        </label>
+        <div class="inline">
+          <label>Shot
+            <input name="shot" value="{esc(params.get("shot", "close-up"))}" />
+          </label>
+          <label>Moment
+            <input name="moment" value="{esc(params.get("moment", "Appy realizes Ozzy lied"))}" />
+          </label>
+        </div>''' if mode == "scene" else ""}
+        {f'''<label>Characters
+          <input name="characters" value="{esc(params.get("characters", ""))}" />
+        </label>
+        <label>Environment
+          <select name="environment">{environment_options}</select>
+        </label>
+        <div class="inline">
+          <label>Speaker 1
+            <select name="speaker1">{speaker_options}</select>
+          </label>
+          <label>Speaker 2
+            <select name="speaker2">{speaker2_options}</select>
+          </label>
+        </div>
+        <label>Line 1
+          <input name="line1" value="{esc(params.get("line1", "Tumne mujhse jhoot kyun bola?"))}" />
+        </label>
+        <label>Emotion 1
+          <input name="emotion1" value="{esc(params.get("emotion1", "hurt, quietly betrayed"))}" />
+        </label>
+        <label>Line 2
+          <input name="line2" value="{esc(params.get("line2", ""))}" />
+        </label>
+        <label>Emotion 2
+          <input name="emotion2" value="{esc(params.get("emotion2", ""))}" />
+        </label>
+        <div class="inline">
+          <label>BGM
+            <input name="bgm" value="{esc(params.get("bgm", "Betrayal reveal"))}" />
+          </label>
+          <label>Mood
+            <input name="mood" value="{esc(params.get("mood", "heartbreaking"))}" />
+          </label>
+        </div>
+        <label>Ambient
+          <input name="ambient" value="{esc(params.get("ambient", "subtle village ambience"))}" />
+        </label>
+        <label>Camera
+          <input name="camera" value="{esc(params.get("camera", "gentle cinematic camera move"))}" />
+        </label>''' if mode == "video" else ""}
+        <label class="check"><input type="checkbox" name="use_ollama" value="yes"{use_ollama_checked} /> Use Ollama</label>
+        <button type="submit">Generate Prompt</button>
+      </form>
+      <div class="panel">
+        {f'<div class="error">{esc(error)}</div>' if error else ''}
+        <pre>{esc(output or "Choose settings and generate a prompt.")}</pre>
+      </div>
+    </div>
+  </div>
 </body>
 </html>"""
 
@@ -1681,7 +1905,7 @@ def _render_page(message: str = "", selected_episode_raw: str | None = None) -> 
         <h1>Pipeline control panel</h1>
         <p>Run the pipeline, import characters, and inspect outputs directly in the browser.</p>
         <p class="muted">{esc(message)}</p>
-        <p><a href="/stories" style="color:#0f766e; font-weight:800; text-decoration:none;">Open story gallery</a> · <a href="/characters" style="color:#0f766e; font-weight:800; text-decoration:none;">Character library</a></p>
+        <p><a href="/stories" style="color:#0f766e; font-weight:800; text-decoration:none;">Open story gallery</a> · <a href="/characters" style="color:#0f766e; font-weight:800; text-decoration:none;">Character library</a> · <a href="/prompts" style="color:#0f766e; font-weight:800; text-decoration:none;">Prompt generator</a></p>
       </div>
       <div class="panel status">
         <h2>Job Status</h2>
@@ -2141,6 +2365,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/characters":
             page = _render_character_library_page()
+            data = page.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path == "/prompts":
+            page = _render_prompt_generator_page(parse_qs(parsed.query))
             data = page.encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
