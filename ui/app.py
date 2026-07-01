@@ -159,8 +159,11 @@ def _latest_output_dirs() -> list[Path]:
 
 
 def _latest_episode_dir() -> Path | None:
-    dirs = _latest_output_dirs()
-    return dirs[0] if dirs else None
+    if not OUTPUT_DIR.exists():
+        return None
+    candidates = [p.parent for p in OUTPUT_DIR.rglob("episode.json") if p.parent.is_dir()]
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0] if candidates else None
 
 
 def _safe_path(raw: str) -> Path:
@@ -711,7 +714,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_HEAD(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
-        if parsed.path == "/":
+        path = parsed.path.rstrip("/") or "/"
+        if path == "/":
             page = _render_page()
             data = page.encode("utf-8")
             self.send_response(HTTPStatus.OK)
@@ -719,7 +723,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             return
-        if parsed.path == "/review":
+        if path == "/review":
             episode = parse_qs(parsed.query).get("episode", [""])[0]
             episode_dir = _safe_path(episode) if episode else (_latest_episode_dir() or OUTPUT_DIR)
             page = _render_review_page(episode_dir)
@@ -729,7 +733,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             return
-        if parsed.path == "/file":
+        if path == "/file":
             file_path = parse_qs(parsed.query).get("path", [""])[0]
             if not file_path:
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -748,7 +752,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         global FLASH_MESSAGE
         parsed = urlparse(self.path)
-        if parsed.path == "/":
+        path = parsed.path.rstrip("/") or "/"
+        if path == "/":
             page = _render_page(message=FLASH_MESSAGE if FLASH_MESSAGE else "")
             data = page.encode("utf-8")
             self.send_response(HTTPStatus.OK)
@@ -757,7 +762,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
-        if parsed.path == "/review":
+        if path == "/review":
             episode = parse_qs(parsed.query).get("episode", [""])[0]
             episode_dir = _safe_path(episode) if episode else (_latest_episode_dir() or OUTPUT_DIR)
             page = _render_review_page(episode_dir)
@@ -768,7 +773,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
-        if parsed.path == "/file":
+        if path == "/file":
             file_path = parse_qs(parsed.query).get("path", [""])[0]
             if not file_path:
                 self.send_error(HTTPStatus.NOT_FOUND)
